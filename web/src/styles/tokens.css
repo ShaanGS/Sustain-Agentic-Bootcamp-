@@ -1,0 +1,90 @@
+/* Still design tokens.
+   Calm editorial utility: warm neutral paper, deep ink, one clay accent.
+   The Protocol view uses the dark technical set under [data-surface="system"]. */
+:root {
+  /* colour — light (student flow) */
+  --frame: #EDE6DA;          /* warm neutral outer frame */
+  --paper: #FBF9F5;          /* the sheet everything sits on */
+  --paper-2: #F4F0E8;        /* soft neutral surface (writing, quiet panels) */
+  --ink: #17150F;            /* deep ink text + primary actions */
+  --ink-2: #4A463D;          /* secondary text */
+  --ink-3: #8B857A;          /* tertiary text, labels */
+  --line: #E4DDD0;           /* thin structural borders */
+  --line-strong: #CFC6B6;
+  --accent: #C4623F;         /* the one accent: clay */
+  --accent-ink: #9E4527;     /* accent text on paper (AA) */
+  --accent-wash: #F6E6DD;
+  --focus: #2F5BD3;
+
+  /* colour — system (protocol) */
+  --sys-bg: #0E0E0C;
+  --sys-panel: #151512;
+  --sys-line: #2A2924;
+  --sys-grid: rgba(255, 255, 255, 0.035);
+  --sys-text: #EDEAE3;
+  --sys-text-2: #A29D92;
+  --sys-text-3: #6E6A61;
+  --sys-pass: #A7D69A;
+  --sys-hit: #EE8B63;
+  --sys-skip: #6E6A61;
+
+  /* typography */
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --text-xs: 0.75rem;     /* 12 — mono labels */
+  --text-sm: 0.875rem;    /* 14 — meta */
+  --text-base: 1rem;      /* 16 — body */
+  --text-md: 1.1875rem;   /* 19 — lead */
+  --text-lg: 1.5rem;      /* 24 — writing surface */
+  --text-xl: clamp(1.75rem, 1.2rem + 1.8vw, 2.5rem);          /* section titles */
+  --text-2xl: clamp(2.25rem, 1.4rem + 3.4vw, 4rem);           /* screen headlines */
+  --text-display: clamp(3.5rem, 1.6rem + 8vw, 8.5rem);        /* the next check-in time */
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --leading-tight: 0.98;
+  --leading-snug: 1.15;
+  --leading-body: 1.55;
+  --tracking-display: -0.045em;
+  --tracking-title: -0.03em;
+  --tracking-label: 0.08em;
+
+  /* spacing (4px base) */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px; --s-5: 24px;
+  --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px; --s-10: 128px;
+
+  /* layout */
+  --sheet-max: 1280px;
+  --read-max: 720px;
+  --frame-pad: clamp(8px, 1.6vw, 20px);
+  --sheet-pad: clamp(20px, 4vw, 56px);
+
+  /* geometry */
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-sheet: clamp(18px, 2vw, 28px);
+  --r-pill: 999px;
+  --border: 1px solid var(--line);
+
+  /* elevation — used sparingly */
+  --shadow-sheet: 0 1px 0 rgba(23, 21, 15, 0.04), 0 24px 60px -32px rgba(23, 21, 15, 0.18);
+  --shadow-float: 0 12px 32px -16px rgba(23, 21, 15, 0.28);
+
+  /* motion */
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* breakpoints (reference): sm 560, md 860, lg 1120 */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; }
+}

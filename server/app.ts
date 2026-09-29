@@ -14,8 +14,11 @@ import { log } from "./log.js";
 
 export interface AppDeps { db: Db; classifier: Classifier; clock?: () => number; tickMs?: number }
 
-const publicCheckin = (c: { id: string; status: string; source: string; due_at: number; expires_at: number; started_at: number | null }) =>
-  ({ id: c.id, status: c.status, source: c.source, due_at: c.due_at, expires_at: c.expires_at, started_at: c.started_at });
+const publicCheckin = (c: { id: string; status: string; source: string; due_at: number; expires_at: number; started_at: number | null }) => ({
+  id: c.id, status: c.status, source: c.source, due_at: c.due_at, expires_at: c.expires_at, started_at: c.started_at,
+  // When an unfinished check-in will be closed automatically (see scheduler.expireStale).
+  closes_at: c.started_at ? c.started_at + checkinConfig.in_progress_timeout_minutes * 60_000 : c.expires_at,
+});
 
 export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: AppDeps) {
   const app = express();

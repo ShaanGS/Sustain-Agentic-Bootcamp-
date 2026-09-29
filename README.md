@@ -16,12 +16,41 @@ SCHEDULE → READY → SHORT PROMPT → RESPONSE → SAFETY CHECK → UNDERSTAND
 ```bash
 npm install
 cp .env.example .env        # pick a classifier (see below)
-npm run server              # API + scheduler on :8787
+npm start                   # builds the UI, serves UI + API + scheduler on http://localhost:8787
+npm run dev                 # development: API on :8787 + Vite UI on http://localhost:5173
 npm test                    # 58 tests: pipeline, scheduler, API state machine, privacy
 npm run eval                # fixture lines through the real pipeline
+npm run build && npm run e2e  # full judge demo in headless Chromium, screenshots in ./screenshots
 ```
 
-> The student UI is being built next, against the team's visual references.
+## Judge demo (about 4 minutes)
+
+Open the check-in in one window and **Protocol** (`/#/protocol`) in a second window beside it. The Protocol view
+refreshes on its own, so each step below shows up there as a real run.
+
+1. **Set a check-in.** On first run, pick a time, tick *Make the first check-in due in 1 minute*, then *Set check-in*.
+   The home screen counts down to the real `next_due_at`.
+2. **It becomes ready.** The server-side scheduler creates the check-in and the home screen switches to *Your check-in is ready*.
+3. **Begin → answer:** "I have three assignments due this week and keep jumping between all of them."
+4. **One next step: Prioritize.** The screen shows *Matched: too many things competing · Selected: Prioritize*.
+   Open *How Still decided* to see the recorded trace with real per-step timings. Then *Done* → the check-in closes and shows the next time.
+5. **Check in now** (same creation path as the scheduler) → "I'm really wound up about tomorrow's presentation and can't settle." → **Paced breathing**.
+6. **Check in now** → "I don't want to be here anymore. I want to end my life."
+   The ordinary flow stops. The full-screen human-help page shows **Tele-MANAS 14416** and **112**, and says Still has not contacted anyone.
+7. **Protocol:** the last run shows `crisis_phrase HIT` and `classifier SKIPPED · not called`.
+
+Optional beats:
+- Type something vague ("idk") to see the one-tap clarification.
+- Run with `CLASSIFIER_PROVIDER=groq` and no key to show that failure goes to clarification, never to a made-up skill.
+
+## UI
+
+- **Stack:** Vite, React and [Motion](https://motion.dev), with Geist, Geist Mono and Instrument Serif self-hosted via Fontsource, so it works offline at the venue.
+- **Visual language:** a warm neutral sheet, deep ink and one clay accent. The Protocol view uses a dark technical grid. Design tokens are in `web/src/styles/tokens.css`.
+- **The journey rail** (Schedule → Ready → Prompt → Safety → Understand → One action → End) is driven by the client's view of the server state machine.
+- **Every screen comes from real API state.** The processing view is only the real in-flight request. The trace is shown after it returns, with the timings the server recorded. The crisis screen renders instantly, without animation, from the static helpline config.
+- **Browser storage:** only the opaque session token, in `sessionStorage`, so a reload can resume. Never the response text.
+- **Optional image:** put an editorial still-life photo at `web/public/still-life.jpg` and it appears on Home. It is decorative only, and hidden when the file is absent.
 
 ## Protocol (one screen)
 
