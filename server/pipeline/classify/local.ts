@@ -3,6 +3,7 @@
 import type { Classifier } from "./types.js";
 import { normalise } from "../crisisPhrase.js";
 import { validateClassifierOutput } from "./schema.js";
+import { elapsed, mark } from "../../timing.js";
 
 // Distress language that is not an explicit crisis phrase: never ORDINARY.
 const CONCERNING = [
@@ -54,10 +55,13 @@ export function localClassifier(): Classifier {
   return {
     info: { provider: "local", model: "rules-v1", sends_text_off_machine: false, destination: "in-process (no network)" },
     async classify(text) {
-      const t0 = Date.now();
+      const t0 = mark();
+      const raw = localRules(text);
+      const ms = elapsed(t0);
       // Goes through the same validator as model output, so the allowlist still applies.
-      const v = validateClassifierOutput(localRules(text));
-      return { source: "local", ms: Date.now() - t0, ...v };
+      const t1 = mark();
+      const v = validateClassifierOutput(raw);
+      return { source: "local", ms, validate_ms: elapsed(t1), ...v };
     },
   };
 }

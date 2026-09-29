@@ -105,10 +105,15 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
         {
           where: `Classifier: ${classifier.info.destination}`,
           what: classifier.info.sends_text_off_machine
-            ? "The response text is sent for labelling only. The provider's own data-retention policy applies."
-            : "The response text does not leave this machine.",
+            ? `Your response is sent to ${classifier.info.provider === "groq" ? "Groq" : classifier.info.provider} for classification. The provider's own data-retention policy applies. Still does not store it.`
+            : "With the current classifier, your response does not leave this machine. Still does not store it.",
           text_stored: null,
         },
+      ],
+      disclosures: [
+        "Your response isn't stored by Still: not in its database, not in browser storage, not in its logs.",
+        "When Groq is active, your response is sent to Groq for classification.",
+        "Still does not contact anyone on your behalf.",
       ],
       open_statuses: OPEN_STATUSES,
       recent_runs: recentRuns(),

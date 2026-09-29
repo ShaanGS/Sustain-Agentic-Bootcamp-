@@ -13,6 +13,7 @@ import { decide, skillForNeed, type Decision } from "./pipeline/policy.js";
 import type { Classifier } from "./pipeline/classify/types.js";
 import { recordRun, type TraceStep } from "./demoLog.js";
 import { log } from "./log.js";
+import { elapsed, mark } from "./timing.js";
 
 export class HttpError extends Error {
   constructor(public status: number, public code: string) { super(code); }
@@ -83,20 +84,26 @@ const outcomeCode = (d: Decision) =>
  */
 export async function respond(db: Db, classifier: Classifier, id: string, token: unknown, text: unknown, now: () => number) {
   const steps: TraceStep[] = [];
+  const tStart = mark();
+  let t = mark();
   const row = authorize(db, id, token, now(), ["in_progress"]);
   if (typeof text !== "string" || text.trim().length === 0) throw new HttpError(400, "empty_response");
   if (text.length > checkinConfig.max_chars) throw new HttpError(400, "response_too_long");
-  steps.push({ step: "session", status: "pass", detail: "Check-in open, session token valid" });
+  steps.push({ step: "session", status: "pass", detail: "Check-in open, session token valid", ms: elapsed(t) });
 
   let decision: Decision;
   let source: string;
-  if (crisisPhraseHit(text)) {
-    steps.push({ step: "crisis_phrase", status: "hit", detail: "Reviewed crisis phrase matched" });
+  t = mark();
+  const hit = crisisPhraseHit(text);
+  const phraseMs = elapsed(t);
+  if (hit) {
+    steps.push({ step: "crisis_phrase", status: "hit", detail: "Reviewed crisis phrase matched", ms: phraseMs });
     steps.push({ step: "classifier", status: "skipped", detail: "Not called — ordinary flow stopped" });
+    t = mark();
     decision = decide(true, null);
     source = "phrase";
   } else {
-    steps.push({ step: "crisis_phrase", status: "pass", detail: "No reviewed crisis phrase" });
+    steps.push({ step: "crisis_phrase", status: "pass", detail: "No reviewed crisis phrase", ms: phraseMs });
     const result = await classifier.classify(text);
     steps.push({
       step: "classifier", status: result.ok ? "pass" : "fail", ms: result.ms,
@@ -104,20 +111,23 @@ export async function respond(db: Db, classifier: Classifier, id: string, token:
         : `${classifier.info.provider} unavailable (${result.reason}) → treated as UNCERTAIN`,
     });
     steps.push({
-      step: "validate", status: result.ok ? "pass" : "fail",
+      step: "validate", status: result.ok ? "pass" : "fail", ms: result.validate_ms,
       detail: result.ok ? (result.classification === "ORDINARY" ? `need "${result.need_id}" is on the allowlist` : "valid label")
         : "no valid output — never defaults to ORDINARY",
     });
+    t = mark();
     decision = decide(false, result);
     source = result.ok ? result.source : "failed";
   }
-  steps.push({ step: "policy", status: "pass", detail: policyDetail(decision) });
+  const policyMs = elapsed(t);
+  steps.push({ step: "policy", status: "pass", detail: policyDetail(decision), ms: policyMs });
 
   // A student may have closed or timed out while the classifier ran.
   const fresh = authorize(db, id, token, now(), ["in_progress"]);
   const payload = apply(db, fresh, decision, source, now());
-  recordRun({ at: now(), checkin: row.id.slice(0, 6), kind: "respond", steps, outcome: outcomeCode(decision) });
-  return { ...payload, trace: steps };
+  const total_ms = elapsed(tStart);
+  recordRun({ at: now(), checkin: row.id.slice(0, 6), kind: "respond", steps, outcome: outcomeCode(decision), total_ms });
+  return { ...payload, trace: steps, total_ms };
 }
 
 function policyDetail(d: Decision) {
@@ -128,18 +138,23 @@ function policyDetail(d: Decision) {
 
 /** Clarification is a single tap from fixed options — never a second free-text round. */
 export function clarify(db: Db, id: string, token: unknown, choice: unknown, now: number) {
+  const tStart = mark();
   const row = authorize(db, id, token, now, ["clarifying"]);
+  const sessionMs = elapsed(tStart);
+  const t = mark();
   let decision: Decision;
   if (choice === "talk_to_person") decision = { action: "help", reason: "student_asked_for_person" };
   else if (typeof choice === "string" && needById(choice)) decision = skillForNeed(choice);
   else throw new HttpError(400, "invalid_choice");
   const steps: TraceStep[] = [
-    { step: "session", status: "pass", detail: "Check-in open, session token valid" },
-    { step: "policy", status: "pass", detail: decision.action === "help" ? "Student asked for a person → human help" : policyDetail(decision) },
+    { step: "session", status: "pass", detail: "Check-in open, session token valid", ms: sessionMs },
+    { step: "policy", status: "pass", ms: elapsed(t),
+      detail: decision.action === "help" ? "Student asked for a person → human help" : policyDetail(decision) },
   ];
   const payload = apply(db, row, decision, "clarified", now);
-  recordRun({ at: now, checkin: row.id.slice(0, 6), kind: "clarify", steps, outcome: outcomeCode(decision) });
-  return { ...payload, trace: steps };
+  const total_ms = elapsed(tStart);
+  recordRun({ at: now, checkin: row.id.slice(0, 6), kind: "clarify", steps, outcome: outcomeCode(decision), total_ms });
+  return { ...payload, trace: steps, total_ms };
 }
 
 export function closeCheckin(db: Db, id: string, token: unknown, now: number) {

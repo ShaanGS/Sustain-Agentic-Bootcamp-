@@ -4,6 +4,7 @@ export interface TraceStep {
   step: "session" | "crisis_phrase" | "classifier" | "validate" | "policy";
   status: "pass" | "hit" | "skipped" | "fail";
   detail: string;
+  /** Measured duration in ms. Absent when the step did not run (e.g. classifier skipped). */
   ms?: number;
 }
 export interface DemoRun {
@@ -12,6 +13,7 @@ export interface DemoRun {
   kind: "respond" | "clarify";
   steps: TraceStep[];
   outcome: string;          // e.g. "skill:PRIORITIZE", "help", "clarify"
+  total_ms: number;         // measured server time for the whole request
 }
 
 const MAX = 20;

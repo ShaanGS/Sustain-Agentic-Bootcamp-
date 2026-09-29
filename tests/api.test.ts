@@ -37,6 +37,9 @@ describe("check-in journey", () => {
     expect(r.body.selected_action).toBe("Prioritize");
     expect(r.body.skill.id).toBe("PRIORITIZE");
     expect(r.body.trace.map((s: any) => s.step)).toEqual(["session", "crisis_phrase", "classifier", "validate", "policy"]);
+    // Every step that ran carries a real measured duration; total covers the request.
+    for (const step of r.body.trace) expect(typeof step.ms).toBe("number");
+    expect(r.body.total_ms).toBeGreaterThanOrEqual(r.body.trace.reduce((a: number, s: any) => a + s.ms, 0) * 0.5);
     // Only one free-text response per check-in.
     await request(app).post(`/api/checkins/${id}/respond`).send({ token, text: "more" }).expect(409);
     await request(app).post(`/api/checkins/${id}/close`).send({ token }).expect(200);
@@ -59,7 +62,10 @@ describe("check-in journey", () => {
     expect(r.body.skill).toBeUndefined();
     expect(r.body.helplines.primary.numbers[0].tel).toBe("14416");
     expect(r.body.helplines.emergency.numbers[0].tel).toBe("112");
-    expect(r.body.trace.find((s: any) => s.step === "classifier").status).toBe("skipped");
+    const skipped = r.body.trace.find((s: any) => s.step === "classifier");
+    expect(skipped.status).toBe("skipped");
+    expect(skipped.ms).toBeUndefined(); // it did not run, so no time is reported
+    expect(r.body.trace.find((s: any) => s.step === "validate")).toBeUndefined();
     // Check-in is closed; nothing further is possible.
     await request(app).post(`/api/checkins/${id}/respond`).send({ token, text: "hello" }).expect(409);
     const st = await request(app).get("/api/state");
@@ -120,6 +126,15 @@ describe("check-in journey", () => {
     await request(app).put("/api/schedule").send({ cadence: "daily", time_local: "18:30", timezone: "Mars/Base" }).expect(400);
     const s = await request(app).put("/api/schedule").send({ cadence: "daily", time_local: "18:30", timezone: "Asia/Kolkata" }).expect(200);
     expect(new Date(s.body.next_due_at).toISOString()).toBe("2026-09-29T13:00:00.000Z");
+  });
+});
+
+describe("protocol disclosure", () => {
+  it("always discloses the Groq path, whatever classifier is active", async () => {
+    const { app } = setup();
+    const p = await request(app).get("/api/protocol").expect(200);
+    expect(p.body.disclosures).toContain("When Groq is active, your response is sent to Groq for classification.");
+    expect(p.body.disclosures.join(" ")).not.toMatch(/nothing you wrote/i);
   });
 });
 

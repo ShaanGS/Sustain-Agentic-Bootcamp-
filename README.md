@@ -17,7 +17,7 @@ SCHEDULE → READY → SHORT PROMPT → RESPONSE → SAFETY CHECK → UNDERSTAND
 npm install
 cp .env.example .env        # pick a classifier (see below)
 npm run server              # API + scheduler on :8787
-npm test                    # 57 tests: pipeline, scheduler, API state machine, privacy
+npm test                    # 58 tests: pipeline, scheduler, API state machine, privacy
 npm run eval                # fixture lines through the real pipeline
 ```
 
@@ -33,6 +33,9 @@ npm run eval                # fixture lines through the real pipeline
 | 4. Validate | Output must match the schema and the needs allowlist. A timeout, error or invalid output becomes **UNCERTAIN, never ORDINARY**. | `zod` + allowlist |
 | 5. Policy | CRISIS → human help. ORDINARY → the one skill mapped to that need. UNCERTAIN → one tap-to-choose clarification, which includes "I'd rather talk to a person". | `config/needs.json` |
 | 6. Close | The check-in ends. There is no second free-text round. | server |
+
+The phrase list is deliberately over-inclusive. Negations such as "I'm not going to kill myself" still route to
+help; this is covered by the tests and the eval fixtures.
 
 The model can escalate to help but can never de-escalate a phrase hit. The model never chooses a skill,
 and never sees or produces a helpline number.
@@ -72,9 +75,12 @@ Compare providers with `npm run eval -- --provider groq`.
 | --- | --- | --- |
 | SQLite `data/still.db` | Schedule. Per check-in: id, source, status, timestamps, outcome, skill id, classifier source | **No.** There is no column for it. |
 | Server logs | Event codes and ids. No request bodies, not even on JSON parse errors. | No |
-| Browser | Nothing in local/session storage | No |
+| Browser | No response text in local or session storage | No |
 | Demo log | Last 20 pipeline step codes, in memory, cleared on restart | No |
 | Classifier provider | Only when `groq` is selected: the text is sent for labelling and the provider's retention policy applies | Leaves the machine |
+
+Wording used in the product: **"Your response isn't stored by Still."** Still never claims that nothing leaves
+the machine. The protocol view always discloses: **"When Groq is active, your response is sent to Groq for classification."**
 
 `tests/api.test.ts › privacy` submits sentinel strings, including a crisis line and a malformed body. It then
 checks that they are absent from the DB file, WAL, logs, `/api/state` and `/api/protocol`.
@@ -99,7 +105,7 @@ in_progress | clarifying | offered --15 min--> abandoned       (terminal)
 | `PUT` | `/api/schedule` | Body `{cadence, time_local, timezone, enabled?, first_due_in_seconds?}` |
 | `POST` | `/api/checkins/now` | Create a due check-in (same path as the scheduler) |
 | `POST` | `/api/checkins/:id/start` | `ready → in_progress`. Returns a single-use token and the prompt |
-| `POST` | `/api/checkins/:id/respond` | Body `{token, text}`. Returns `route: skill \| clarify \| help` and a step trace (no text) |
+| `POST` | `/api/checkins/:id/respond` | Body `{token, text}`. Returns `route: skill \| clarify \| help`, plus a step trace with measured per-step `ms` and `total_ms` (no text). Steps that didn't run carry no time. |
 | `POST` | `/api/checkins/:id/clarify` | Body `{token, choice: need_id \| "talk_to_person"}` |
 | `POST` | `/api/checkins/:id/close` | `offered \| clarifying → completed` |
 | `POST` | `/api/checkins/:id/skip` | `ready → skipped` |
