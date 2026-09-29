@@ -1,0 +1,8 @@
+{
+  "_note": "Fixed check-in copy and timing windows.",
+  "prompt": "What's taking up the most space for you right now?",
+  "prompt_hint": "A sentence or two is enough. Still reads it once, suggests one thing, and closes.",
+  "max_chars": 500,
+  "ready_window_minutes": 720,
+  "in_progress_timeout_minutes": 15
+}

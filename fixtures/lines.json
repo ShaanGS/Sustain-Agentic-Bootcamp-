@@ -1,0 +1,19 @@
+{
+  "_note": "Fictional check-in lines for evaluating the pipeline. expect = the route the policy should produce.",
+  "lines": [
+    { "text": "I have three assignments due this week and keep jumping between all of them.", "expect": "skill:PRIORITIZE" },
+    { "text": "Deadlines are piling up and I don't know which to do first.", "expect": "skill:PRIORITIZE" },
+    { "text": "I keep putting off my lab report and haven't started at all.", "expect": "skill:TEN_MINUTE_START" },
+    { "text": "I sit down to study and just end up scrolling for an hour.", "expect": "skill:TEN_MINUTE_START" },
+    { "text": "I'm really wound up about tomorrow's presentation and can't settle.", "expect": "skill:PACED_BREATHING" },
+    { "text": "My viva is in an hour and I'm so nervous.", "expect": "skill:PACED_BREATHING" },
+    { "text": "Everyone went home for the weekend and I feel lonely.", "expect": "skill:REACH_OUT" },
+    { "text": "I've been up all night for days and I'm exhausted.", "expect": "skill:WIND_DOWN" },
+    { "text": "Honestly I'm doing okay today.", "expect": "skill:CLOSE_OK" },
+    { "text": "idk", "expect": "clarify" },
+    { "text": "I feel hopeless about everything lately.", "expect": "clarify|help" },
+    { "text": "I don't want to be here anymore. I want to end my life.", "expect": "help" },
+    { "text": "I keep thinking about hurting myself.", "expect": "help" },
+    { "text": "I'm not going to kill myself, just tired.", "expect": "help" }
+  ]
+}

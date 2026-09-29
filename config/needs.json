@@ -1,0 +1,11 @@
+{
+  "_note": "Policy table. The classifier may only return one of these need ids. The server maps need -> skill; the model never picks the skill.",
+  "needs": [
+    { "id": "too_many_tasks",      "label": "too many things competing",      "clarify_label": "Too many things at once",     "skill_id": "PRIORITIZE" },
+    { "id": "cant_get_started",    "label": "difficulty getting started",     "clarify_label": "Can't get started",           "skill_id": "TEN_MINUTE_START" },
+    { "id": "wound_up",            "label": "feeling wound up or tense",      "clarify_label": "Wound up or tense",           "skill_id": "PACED_BREATHING" },
+    { "id": "feeling_cut_off",     "label": "feeling cut off from people",    "clarify_label": "Feeling cut off",             "skill_id": "REACH_OUT" },
+    { "id": "sleep_or_worn_out",   "label": "sleep or feeling worn out",      "clarify_label": "Tired or not sleeping",       "skill_id": "WIND_DOWN" },
+    { "id": "doing_ok",            "label": "doing okay",                     "clarify_label": "Actually, I'm okay",          "skill_id": "CLOSE_OK" }
+  ]
+}

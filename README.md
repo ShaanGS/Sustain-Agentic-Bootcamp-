@@ -1,0 +1,111 @@
+# Still
+
+A scheduled, non-clinical check-in steward for students — **PS #16, Sustainable Agentic AI bootcamp**.
+
+Still is not a therapist, not a diagnosis system and not an open-ended companion. It runs one short
+check-in, takes **one** bounded action, and stops. If a crisis phrase fires, the ordinary flow stops
+and a verified public helpline is shown instead.
+
+```
+SCHEDULE → READY → SHORT PROMPT → RESPONSE → SAFETY CHECK → UNDERSTAND → ONE ACTION → END
+                                              └─ crisis ─→ STOP → HUMAN HELP (Tele-MANAS 14416 · 112) → END
+```
+
+## Run it
+
+```bash
+npm install
+cp .env.example .env        # pick a classifier (see below)
+npm run server              # API + scheduler on :8787
+npm test                    # 57 tests: pipeline, scheduler, API state machine, privacy
+npm run eval                # fixture lines through the real pipeline
+```
+
+> The student UI is being built next, against the team's visual references.
+
+## Protocol (one screen)
+
+| Step | What happens | Authority |
+| --- | --- | --- |
+| 1. Session | The check-in must be open. The single-use session token must be valid (15-min window). | server |
+| 2. Crisis phrase | Reviewed explicit phrase list, run locally with no network. A **hit stops everything** before any model call. | `config/crisis-phrases.json` |
+| 3. Classify | Returns `ORDINARY` / `UNCERTAIN` / `CRISIS`, plus one `need_id` if ORDINARY. **It never writes advice.** | Groq / Ollama / local rules |
+| 4. Validate | Output must match the schema and the needs allowlist. A timeout, error or invalid output becomes **UNCERTAIN, never ORDINARY**. | `zod` + allowlist |
+| 5. Policy | CRISIS → human help. ORDINARY → the one skill mapped to that need. UNCERTAIN → one tap-to-choose clarification, which includes "I'd rather talk to a person". | `config/needs.json` |
+| 6. Close | The check-in ends. There is no second free-text round. | server |
+
+The model can escalate to help but can never de-escalate a phrase hit. The model never chooses a skill,
+and never sees or produces a helpline number.
+
+### Reviewed static config
+
+| File | What it holds |
+| --- | --- |
+| `config/helplines.json` | Tele-MANAS **14416** / 1-800-891-4416 (MoHFW, free, 24×7) and Emergency **112**, each with its source URL and verification date |
+| `config/skills.json` | 5 skills, plus a "nothing to fix today" close. Fixed copy, no diagnosis words, no treatment claims |
+| `config/needs.json` | The policy table mapping need → skill |
+| `config/crisis-phrases.json` | Explicit phrases. Deliberately over-inclusive: negations still route to help |
+| `config/checkin.json` | The one prompt, the character limit and the time windows |
+
+## Classifier options
+
+| `CLASSIFIER_PROVIDER` | Where the response text goes | Notes |
+| --- | --- | --- |
+| `local` (default) | Stays in-process | Deterministic keyword rules. Anything unclear becomes UNCERTAIN. |
+| `groq` | Sent to `api.groq.com` for labelling | Free tier, `llama-3.1-8b-instant`. Groq's data policy applies. Without a key, every response goes to clarification. |
+| `ollama` | Stays on the laptop | Free and local. Needs `ollama pull llama3.2:3b` first. |
+
+Compare providers with `npm run eval -- --provider groq`.
+
+## Scheduling
+
+- The schedule (daily or weekdays, `HH:MM`, IANA timezone) is persisted in SQLite.
+- A **server-side** scheduler ticks every 15s. When `now ≥ next_due_at` it creates a real `ready` check-in, then advances `next_due_at`. Missed slots, for example while the laptop is asleep, collapse into one check-in.
+- "Check in now" calls the same `createDueCheckin()`.
+- For a demo, `first_due_in_seconds` sets a real due time (for example, 60s out) that the scheduler then fires.
+- Still sends **no notifications**. A due check-in shows up in the app.
+- A ready check-in expires after 12h. An unfinished one is abandoned after 15 min.
+
+## What is stored, and where
+
+| Where | What | Free text? |
+| --- | --- | --- |
+| SQLite `data/still.db` | Schedule. Per check-in: id, source, status, timestamps, outcome, skill id, classifier source | **No.** There is no column for it. |
+| Server logs | Event codes and ids. No request bodies, not even on JSON parse errors. | No |
+| Browser | Nothing in local/session storage | No |
+| Demo log | Last 20 pipeline step codes, in memory, cleared on restart | No |
+| Classifier provider | Only when `groq` is selected: the text is sent for labelling and the provider's retention policy applies | Leaves the machine |
+
+`tests/api.test.ts › privacy` submits sentinel strings, including a crisis line and a malformed body. It then
+checks that they are absent from the DB file, WAL, logs, `/api/state` and `/api/protocol`.
+
+## Check-in state machine
+
+```
+(schedule) --tick / check-in-now--> ready --start--> in_progress
+ready --> expired | skipped
+in_progress --crisis phrase or CRISIS--> help_shown            (terminal)
+in_progress --ORDINARY--> offered --done--> completed          (terminal)
+in_progress --UNCERTAIN / classifier failed--> clarifying
+clarifying --pick one need--> offered ; --"talk to a person"--> help_shown
+in_progress | clarifying | offered --15 min--> abandoned       (terminal)
+```
+
+## API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/state` | Schedule, open check-in, last outcome, classifier info, helplines |
+| `PUT` | `/api/schedule` | Body `{cadence, time_local, timezone, enabled?, first_due_in_seconds?}` |
+| `POST` | `/api/checkins/now` | Create a due check-in (same path as the scheduler) |
+| `POST` | `/api/checkins/:id/start` | `ready → in_progress`. Returns a single-use token and the prompt |
+| `POST` | `/api/checkins/:id/respond` | Body `{token, text}`. Returns `route: skill \| clarify \| help` and a step trace (no text) |
+| `POST` | `/api/checkins/:id/clarify` | Body `{token, choice: need_id \| "talk_to_person"}` |
+| `POST` | `/api/checkins/:id/close` | `offered \| clarifying → completed` |
+| `POST` | `/api/checkins/:id/skip` | `ready → skipped` |
+| `GET` | `/api/protocol` | Everything the protocol screen shows, including recent runs as step codes only |
+
+## Scope: what Still is not
+
+Still is not a therapist, a diagnosis tool, a crisis-response service, a mood tracker, a surveillance tool or a
+treatment system. Still never contacts anyone on the student's behalf.

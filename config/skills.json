@@ -1,0 +1,71 @@
+{
+  "_note": "Reviewed skills allowlist. Copy is fixed; the model never writes advice. Reviewed against the team's content checklist: no diagnosis names, no treatment or outcome claims, one small action, under 5 minutes. This is not a clinical review.",
+  "review": { "reviewed_by": "Still team content checklist", "reviewed_on": "2026-09-29" },
+  "skills": [
+    {
+      "id": "PRIORITIZE",
+      "title": "Prioritize",
+      "summary": "Pick one task, not three.",
+      "minutes": 3,
+      "steps": [
+        "Write every task you're juggling on one list.",
+        "Circle the one with the nearest deadline or the biggest cost if it slips.",
+        "Write the very first 10-minute step for that one task — only that one."
+      ]
+    },
+    {
+      "id": "TEN_MINUTE_START",
+      "title": "Ten-minute start",
+      "summary": "Make starting smaller than the task.",
+      "minutes": 10,
+      "steps": [
+        "Set a timer for 10 minutes.",
+        "Open the task and do the smallest visible piece — a heading, one line, one question.",
+        "When the timer ends, you may stop. If you keep going, that's a bonus."
+      ]
+    },
+    {
+      "id": "PACED_BREATHING",
+      "title": "Paced breathing",
+      "summary": "Slow your breathing for one minute.",
+      "minutes": 2,
+      "steps": [
+        "Breathe in through your nose for a count of 4.",
+        "Hold for 4, then breathe out slowly for a count of 6.",
+        "Repeat six times, then notice one thing you can see around you."
+      ]
+    },
+    {
+      "id": "REACH_OUT",
+      "title": "Reach out to one person",
+      "summary": "One small message to someone you trust.",
+      "minutes": 3,
+      "steps": [
+        "Think of one person you'd be okay hearing from — a friend, sibling, classmate.",
+        "Send a short message. It can be as simple as \"hey, free to talk later?\"",
+        "You don't have to explain everything. Reaching out is the whole step."
+      ]
+    },
+    {
+      "id": "WIND_DOWN",
+      "title": "Wind down",
+      "summary": "A short routine before sleep.",
+      "minutes": 5,
+      "steps": [
+        "Pick a stop time for screens tonight and set an alarm for it.",
+        "Write down anything still on your mind so it's out of your head and on paper.",
+        "Dim the lights and do something low-effort until you feel sleepy."
+      ]
+    },
+    {
+      "id": "CLOSE_OK",
+      "title": "Nothing to fix today",
+      "summary": "Sounds like today is okay. That's a fine check-in.",
+      "minutes": 0,
+      "steps": [
+        "No action needed.",
+        "Still will check in again at your next scheduled time."
+      ]
+    }
+  ]
+}

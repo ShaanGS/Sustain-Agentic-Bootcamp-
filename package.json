@@ -1,0 +1,28 @@
+{
+  "name": "still",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Still — a scheduled, non-clinical check-in steward for students (PS #16).",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "server": "node --disable-warning=ExperimentalWarning --import tsx server/index.ts",
+    "dev:server": "node --disable-warning=ExperimentalWarning --watch --import tsx server/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "eval": "node --disable-warning=ExperimentalWarning --import tsx scripts/eval.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  }
+}
