@@ -45,12 +45,19 @@ Optional beats:
 
 ## UI
 
-- **Stack:** Vite, React and [Motion](https://motion.dev), with Geist, Geist Mono and Instrument Serif self-hosted via Fontsource, so it works offline at the venue.
-- **Visual language:** a warm neutral sheet, deep ink and one clay accent. The Protocol view uses a dark technical grid. Design tokens are in `web/src/styles/tokens.css`.
-- **The journey rail** (Schedule → Ready → Prompt → Safety → Understand → One action → End) is driven by the client's view of the server state machine.
-- **Every screen comes from real API state.** The processing view is only the real in-flight request. The trace is shown after it returns, with the timings the server recorded. The crisis screen renders instantly, without animation, from the static helpline config.
-- **Browser storage:** only the opaque session token, in `sessionStorage`, so a reload can resume. Never the response text.
-- **Optional image:** put an editorial still-life photo at `web/public/still-life.jpg` and it appears on Home. It is decorative only, and hidden when the file is absent.
+The layout follows the team's four visual references: an editorial landing layout, a journal app, a task planner and a dark job app.
+
+- **Navigation:**
+  - On desktop, a left nav: **Today · Schedule · How it works · Help**. A green dot next to Today means a check-in is ready.
+  - On phones, the same four tabs sit in a bottom tab bar.
+  - A "Talk to a person · 14416 · 112" pill is always in the header.
+- **Today:** a big "YOUR NEXT CHECK-IN" headline, a tilted countdown stamp, and a dark card with a ring and the time. When the scheduler fires, the dark card becomes the green "Your check-in is ready" card with *Begin check-in*.
+- **Check-in:** a focused panel with ✕, the question, a white answer field and a full-width *Submit*. Step chips track the journey: Prompt → Safety → Understand → One step → End.
+- **One next step:** a journal-style entry with the skill photo, *Matched* and *Selected action* tiles, the three reviewed steps, and *Done* beside them. *Why this step* expands into the real server trace with measured timings.
+- **Crisis:** replaces the whole app instantly with a warm **Tele-MANAS 14416** card and a dark **112** card, plus "Still has stopped this check-in and has not contacted anyone." Static content, no motion.
+- **How it works:** a dark grid. The pipeline is drawn as six connected circles, each coloured by the last real run.
+- **Images:** 8 editorial photos generated on Magnific. Run `npm run images` once on a machine with internet to save them into `web/public/img/`. Until then the app falls back to the Magnific URLs, which are signed and expire, and then to tinted placeholders.
+- **Stack:** Vite, React and Motion. Urbanist and Geist Mono are self-hosted. Tokens live in `web/src/styles/tokens.css`.
 
 ## Protocol (one screen)
 

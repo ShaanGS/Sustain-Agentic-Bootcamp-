@@ -11,7 +11,7 @@ const readJson = <T>(name: string): T =>
 export interface HelplineNumber { display: string; tel: string }
 export interface Helpline {
   id: string; name: string; description: string; numbers: HelplineNumber[];
-  source_url: string; verified_on: string; verified_by: string;
+  source_url: string; verified_on: string; verified_by: string; tags?: string[];
 }
 export interface Skill { id: string; title: string; summary: string; minutes: number; steps: string[] }
 export interface Need { id: string; label: string; clarify_label: string; skill_id: string }

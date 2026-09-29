@@ -1,6 +1,6 @@
 // Typed client for the Still API. Every screen reads from these calls; nothing is mocked.
 export interface HelplineNumber { display: string; tel: string }
-export interface Helpline { id: string; name: string; description: string; numbers: HelplineNumber[]; source_url: string; verified_on: string; verified_by: string }
+export interface Helpline { id: string; name: string; description: string; numbers: HelplineNumber[]; source_url: string; verified_on: string; verified_by: string; tags?: string[] }
 export interface Helplines { primary: Helpline; emergency: Helpline }
 export interface ClassifierInfo { provider: "groq" | "ollama" | "local"; model: string; sends_text_off_machine: boolean; destination: string }
 export type Cadence = "daily" | "weekdays";

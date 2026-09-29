@@ -37,119 +37,128 @@ const expectText = async (t, timeout = 10_000) => page.getByText(t, { exact: fal
 const log = (...a) => console.log("•", ...a);
 
 try {
-  // 1. First run → set schedule (first due in 1 minute, fired by the real server scheduler)
+  const nav = (name) => page.locator(".nav").getByRole("link", { name }).click();
+  const begin = async () => { await expectText("Daily check"); await page.getByRole("button", { name: /Begin check/ }).click(); };
+  const answer = async (text) => { await page.locator("#response").fill(text); await page.getByRole("button", { name: "Submit" }).click(); };
+  const finish = async () => { await page.getByRole("button", { name: /^Done/ }).click(); await expectText("That's the"); };
+
+  // 1. First run → Schedule tab → set a check-in due in 1 minute (fired by the real server scheduler)
   await page.goto(BASE);
-  await expectText("When should Still");
+  await expectText("When should");
   await shot("01-first-run");
+  await page.getByRole("link", { name: /Set a check/ }).click();
+  await expectText("schedule");
   await page.locator("input[type=time]").fill("18:30");
   await page.getByLabel("Make the first check-in due in 1 minute").check();
-  await page.getByRole("button", { name: "Set check-in" }).click();
-  await expectText("Next check-in");
-  await shot("02-home-scheduled");
+  await shot("02-schedule");
+  await page.getByRole("button", { name: /Set check/ }).click();
+  await expectText("Saved");
+  await shot("02b-schedule-saved");
+  await nav("Today");
+  await expectText("Until it's ready");
+  await shot("03-today-waiting");
   log("schedule saved; waiting for the server scheduler to fire…");
 
   // 2. The scheduler makes it ready
-  await expectText("Ready now", 90_000);
-  await shot("03-home-ready");
+  await expectText("Daily check", 90_000);
+  await shot("04-today-ready");
   log("scheduler created the check-in");
 
   // 3. Ordinary path #1
-  await page.getByRole("button", { name: "Begin check-in" }).click();
+  await begin();
   await expectText("What's taking up the most space");
-  await shot("04-prompt-empty");
   await page.locator("#response").fill(LINES.ordinary1);
-  await shot("05-prompt-filled");
+  await shot("05-prompt");
   await page.getByRole("button", { name: "Submit" }).click();
   await expectText("One next step");
   await expectText("Prioritize");
-  await shot("06-result-prioritize");
-  await page.locator(".trace summary").click();
-  await shot("06b-result-trace-open");
-  await page.getByRole("button", { name: "Done" }).click();
-  await expectText("That's it for");
+  await shot("06-result");
+  await page.getByRole("button", { name: "How Still decided" }).click();
+  await shot("06b-result-trace");
+  await finish();
   await shot("07-done");
-  await page.getByRole("button", { name: "Return home" }).click();
+  await page.getByRole("button", { name: "Back to Today" }).click();
   log("ordinary #1 → Prioritize");
 
   // 4. Ordinary path #2 via "Check in now" (same creation path as the scheduler)
   await page.getByRole("button", { name: "Check in now" }).click();
-  await expectText("Ready now");
-  await page.getByRole("button", { name: "Begin check-in" }).click();
-  await page.locator("#response").fill(LINES.ordinary2);
-  await page.getByRole("button", { name: "Submit" }).click();
+  await begin();
+  await answer(LINES.ordinary2);
   await expectText("Paced breathing");
   await shot("08-result-breathing");
-  await page.getByRole("button", { name: "Done" }).click();
-  await page.getByRole("button", { name: "Return home" }).click();
+  await finish();
+  await page.getByRole("button", { name: "Back to Today" }).click();
   log("ordinary #2 → Paced breathing");
 
   // 5. Unclear → clarify → one tap
   await page.getByRole("button", { name: "Check in now" }).click();
-  await page.getByRole("button", { name: "Begin check-in" }).click();
-  await page.locator("#response").fill(LINES.unclear);
-  await page.getByRole("button", { name: "Submit" }).click();
-  await expectText("Which feels");
+  await begin();
+  await answer(LINES.unclear);
+  await expectText("Which feels closest?");
   await shot("09-clarify");
   await page.getByRole("button", { name: /Can't get started/ }).click();
   await expectText("Ten-minute start");
-  await shot("10-result-after-clarify");
-  await page.getByRole("button", { name: "Done" }).click();
-  await page.getByRole("button", { name: "Return home" }).click();
+  await finish();
+  await page.getByRole("button", { name: "Back to Today" }).click();
   log("unclear → clarify → Ten-minute start");
 
-  // 6. Human support entry (quiet, from the shell)
-  await page.getByRole("button", { name: "Human support" }).click();
-  await expectText("free public lines");
-  await shot("11-support-panel");
-  await page.keyboard.press("Escape");
+  // 6. Help tab (always reachable)
+  await nav("Help");
+  await expectText("Opening this page doesn't change");
+  await shot("10-help-tab");
+  await nav("Today");
 
   // 7. Crisis → normal flow stops → human help
   await page.getByRole("button", { name: "Check in now" }).click();
-  await page.getByRole("button", { name: "Begin check-in" }).click();
-  await page.locator("#response").fill(LINES.crisis);
-  await page.getByRole("button", { name: "Submit" }).click();
+  await begin();
+  await answer(LINES.crisis);
   await expectText("Please talk to a person now.");
-  if (await page.locator(".steps, .skill-title").count()) throw new Error("a skill rendered on the crisis path");
-  await shot("12-crisis-help");
+  if (await page.locator(".entry, .steps").count()) throw new Error("a skill rendered on the crisis path");
+  await shot("11-crisis");
   const storage = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
   for (const l of Object.values(LINES)) if (storage.includes(l.slice(0, 20))) throw new Error("response text found in browser storage");
-  await page.getByRole("button", { name: "Return home" }).click();
+  await page.getByRole("button", { name: "Return to Today" }).click();
   await expectText("Ended with human support");
-  await shot("13-home-after-crisis");
+  await shot("12-today-after-crisis");
   log("crisis → human help; browser storage holds no response text");
 
-  // 8. Protocol, live
-  await page.getByRole("link", { name: "Protocol" }).first().click();
-  await expectText("Then it stops.");
-  await expectText("SKIPPED · not called");
-  await shot("14-protocol");
-  await page.screenshot({ path: join(SHOTS, "15-protocol-full.png"), fullPage: true });
-  log("protocol shows the last run with the classifier skipped");
+  // 8. How it works, live
+  await nav("How it works");
+  await expectText("skipped · not called");
+  await shot("13-how");
+  await page.screenshot({ path: join(SHOTS, "13b-how-full.png"), fullPage: true });
+  log("how-it-works shows the last run with the classifier skipped");
 
   // 9. Phone width
   const m = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3 });
   const mp = await m.newPage();
+  const mshot = async (n, full = false) => { await settle(mp); await mp.screenshot({ path: join(SHOTS, `${n}.png`), fullPage: full }); };
   await mp.goto(BASE);
-  await mp.getByText("Next check-in").first().waitFor();
-  await settle(mp);
-  await mp.screenshot({ path: join(SHOTS, "20-mobile-home.png") });
+  await mp.getByText("Until it's ready").first().waitFor();
+  await mshot("20-m-today", true);
+  await mp.locator(".tabbar").getByRole("link", { name: "Schedule" }).click();
+  await mp.getByText("Upcoming").first().waitFor();
+  await mshot("21-m-schedule", true);
+  await mp.locator(".tabbar").getByRole("link", { name: "Today" }).click();
   await mp.getByRole("button", { name: "Check in now" }).click();
-  await mp.getByRole("button", { name: "Begin check-in" }).click();
+  await mp.getByRole("button", { name: /Begin check/ }).click();
   await mp.locator("#response").fill(LINES.ordinary1);
-  await mp.screenshot({ path: join(SHOTS, "21-mobile-prompt.png") });
+  await mshot("22-m-prompt");
   await mp.getByRole("button", { name: "Submit" }).click();
-  await mp.getByText("One next step").waitFor();
-  await settle(mp);
-  await mp.screenshot({ path: join(SHOTS, "22-mobile-result.png"), fullPage: true });
-  await mp.getByRole("button", { name: "Done" }).click();
-  await mp.getByRole("button", { name: "Return home" }).click();
+  await mp.getByText("One next step").first().waitFor();
+  await mshot("23-m-result", true);
+  await mp.getByRole("button", { name: /^Done/ }).click();
+  await mp.getByRole("button", { name: "Back to Today" }).click();
   await mp.getByRole("button", { name: "Check in now" }).click();
-  await mp.getByRole("button", { name: "Begin check-in" }).click();
+  await mp.getByRole("button", { name: /Begin check/ }).click();
   await mp.locator("#response").fill(LINES.crisis);
   await mp.getByRole("button", { name: "Submit" }).click();
   await mp.getByText("Please talk to a person now.").waitFor();
-  await settle(mp);
-  await mp.screenshot({ path: join(SHOTS, "23-mobile-help.png"), fullPage: true });
+  await mshot("24-m-crisis", true);
+  await mp.getByRole("button", { name: "Return to Today" }).click();
+  await mp.locator(".tabbar").getByRole("link", { name: "How" }).click();
+  await mp.getByText("skipped · not called").first().waitFor();
+  await mshot("25-m-how");
   log("phone width OK");
 
   const logs = serverLog.join("");

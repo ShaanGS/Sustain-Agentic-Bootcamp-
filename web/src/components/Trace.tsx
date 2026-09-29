@@ -2,32 +2,21 @@ import type { TraceStep } from "../lib/api";
 import { fmtMs } from "../lib/format";
 
 const NAMES: Record<TraceStep["step"], string> = {
-  session: "Session",
-  crisis_phrase: "Crisis phrase check",
-  classifier: "Classifier",
-  validate: "Validate output",
-  policy: "Policy",
+  session: "Session check", crisis_phrase: "Crisis phrase check", classifier: "Classifier", validate: "Validate output", policy: "Policy",
 };
 
-/** The completed server trace, shown as recorded. Nothing here is animated or estimated. */
-export function Trace({ steps, totalMs, open = false }: { steps: TraceStep[]; totalMs: number; open?: boolean }) {
+/** The completed server trace, exactly as recorded. */
+export function Trace({ steps, totalMs }: { steps: TraceStep[]; totalMs: number }) {
   return (
-    <details className="trace" open={open}>
-      <summary>
-        <span>How Still decided</span>
-        <span className="mono" style={{ fontSize: 12 }}>{steps.length} steps · {fmtMs(totalMs)}</span>
-      </summary>
+    <div className="trace">
       {steps.map((s) => (
         <div className="trace-row" key={s.step}>
-          <span className={`st st-${s.status}`} aria-hidden />
-          <span>
-            <span className="trace-name">{NAMES[s.step]}</span>
-            <span className="trace-detail">{s.status.toUpperCase()} · {s.detail}</span>
-          </span>
-          <span className="trace-ms">{s.status === "skipped" ? "not run" : fmtMs(s.ms)}</span>
+          <span className={`dot ${s.status}`} aria-hidden />
+          <span><b>{NAMES[s.step]}</b><small>{s.status.toUpperCase()} · {s.detail}</small></span>
+          <span className="ms">{s.status === "skipped" ? "not run" : fmtMs(s.ms)}</span>
         </div>
       ))}
-      <div className="trace-total"><span>Server time, measured</span><span>{fmtMs(totalMs)}</span></div>
-    </details>
+      <div className="trace-total"><span>Measured on the server</span><span>{fmtMs(totalMs)}</span></div>
+    </div>
   );
 }

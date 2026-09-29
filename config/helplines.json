@@ -5,21 +5,42 @@
     "name": "Tele-MANAS",
     "description": "Free, 24x7 national tele-mental-health helpline run by the Ministry of Health & Family Welfare, Government of India. Callers can choose their language.",
     "numbers": [
-      { "display": "14416", "tel": "14416" },
-      { "display": "1-800-891-4416", "tel": "18008914416" }
+      {
+        "display": "14416",
+        "tel": "14416"
+      },
+      {
+        "display": "1-800-891-4416",
+        "tel": "18008914416"
+      }
     ],
     "source_url": "https://telemanas.mohfw.gov.in/home",
     "secondary_source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2022057",
     "verified_on": "2026-09-29",
-    "verified_by": "Still team"
+    "verified_by": "Still team",
+    "tags": [
+      "Free",
+      "24×7",
+      "Govt. of India"
+    ]
   },
   "emergency": {
     "id": "erss_112",
     "name": "Emergency",
     "description": "India's single emergency number (police, fire, ambulance). For immediate danger.",
-    "numbers": [{ "display": "112", "tel": "112" }],
+    "numbers": [
+      {
+        "display": "112",
+        "tel": "112"
+      }
+    ],
     "source_url": "https://112.gov.in/",
     "verified_on": "2026-09-29",
-    "verified_by": "Still team"
+    "verified_by": "Still team",
+    "tags": [
+      "Police",
+      "Fire",
+      "Ambulance"
+    ]
   }
 }
