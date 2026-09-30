@@ -12,7 +12,9 @@ const SHOTS = process.env.SHOTS_DIR ?? "screenshots";
 const db = join(tmpdir(), `still-e2e-${Date.now()}.db`);
 mkdirSync(SHOTS, { recursive: true });
 
-const server = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "--import", "tsx", "server/index.ts"], {
+// E2E_VERCEL=1 runs the same demo against the Vercel build output (npm run vercel-build first).
+const entry = process.env.E2E_VERCEL ? ["scripts/vercel-local.mjs"] : ["--import", "tsx", "server/index.ts"];
+const server = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", ...entry], {
   env: { ...process.env, PORT: String(PORT), STILL_DB_PATH: db, SCHEDULER_TICK_MS: "2000", CLASSIFIER_PROVIDER: process.env.CLASSIFIER_PROVIDER ?? "local" },
   stdio: ["ignore", "pipe", "inherit"],
 });

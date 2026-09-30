@@ -1,12 +1,19 @@
 // Loads the reviewed static configuration and environment settings.
 // Everything a student can be shown as help or advice comes from config/*.json.
-import { readFileSync } from "node:fs";
+// JSON is imported statically so a bundled serverless function carries it with it.
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import helplinesJson from "../config/helplines.json" with { type: "json" };
+import skillsJson from "../config/skills.json" with { type: "json" };
+import needsJson from "../config/needs.json" with { type: "json" };
+import crisisJson from "../config/crisis-phrases.json" with { type: "json" };
+import checkinJson from "../config/checkin.json" with { type: "json" };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const readJson = <T>(name: string): T =>
-  JSON.parse(readFileSync(join(root, "config", name), "utf8")) as T;
+const readJson = <T>(name: string): T => ({
+  "helplines.json": helplinesJson, "skills.json": skillsJson, "needs.json": needsJson,
+  "crisis-phrases.json": crisisJson, "checkin.json": checkinJson,
+} as Record<string, unknown>)[name] as T;
 
 export interface HelplineNumber { display: string; tel: string }
 export interface Helpline {
@@ -65,6 +72,8 @@ export interface Env {
   classifierTimeoutMs: number;
   port: number;
   dbPath: string;
+  /** Postgres (e.g. Neon on Vercel). When set, it is used instead of SQLite. */
+  databaseUrl?: string;
   schedulerTickMs: number;
 }
 
@@ -81,7 +90,8 @@ export function readEnv(e: NodeJS.ProcessEnv = process.env): Env {
     ollamaModel: e.OLLAMA_MODEL || "llama3.2:3b",
     classifierTimeoutMs: Number(e.CLASSIFIER_TIMEOUT_MS) || 6000,
     port: Number(e.PORT) || 8787,
-    dbPath: e.STILL_DB_PATH || join(root, "data", "still.db"),
+    dbPath: e.STILL_DB_PATH || (e.VERCEL ? "/tmp/still.db" : join(root, "data", "still.db")),
+    databaseUrl: e.DATABASE_URL || e.POSTGRES_URL || undefined,
     schedulerTickMs: Number(e.SCHEDULER_TICK_MS) || 15000,
   };
 }

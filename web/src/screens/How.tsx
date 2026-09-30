@@ -89,7 +89,7 @@ export function How({ protocol }: { protocol: Protocol | null }) {
       </div>
 
       <div className="runs-card">
-        <div className="runs-head"><h3>Recent runs</h3><span>Event codes only · in memory · cleared on restart · never response text</span></div>
+        <div className="runs-head"><h3>Recent runs</h3><span>Event codes only · last 20 · never response text</span></div>
         {p.recent_runs.length === 0 ? <p className="empty">No runs yet.</p> : (
           <div className="runs-wrap">
             <table className="runs">

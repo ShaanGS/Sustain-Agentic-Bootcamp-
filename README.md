@@ -28,6 +28,35 @@ npm run dev                 # development: API on :8787 + Vite UI on http://loca
 npm test                    # 105 tests: pipeline, scheduler, API state machine, privacy
 npm run eval                # fixture lines through the real pipeline
 npm run build && npm run e2e  # full judge demo in headless Chromium, screenshots in ./screenshots
+npm run test:pg             # the same 105 tests on real Postgres (in-process PGlite)
+```
+
+## Deploy on Vercel
+
+The repo builds with the Vercel Build Output API. There is no framework preset: `npm run vercel-build` writes `.vercel/output`.
+
+- `static/` holds the Vite UI.
+- `functions/api.func` holds the Express API, bundled into a single Node 22 function.
+- `/api/*` routes to the function, and every other path falls back to `index.html`.
+
+1. Import the repo in Vercel. Set **Framework preset: Other**, **Build command: `npm run vercel-build`**, **Node 22.x**.
+2. **Storage → Create → Neon (Postgres)**, then connect it to the project. This injects `DATABASE_URL`/`POSTGRES_URL`.
+   Without it, Still falls back to SQLite in `/tmp`, which is per instance and resets when the instance is recycled. That's fine for a quick look but not for judging.
+3. Set these environment variables:
+
+   | Variable | Value |
+   | --- | --- |
+   | `STILL_SECRET` | Any long random string. It is the key that seals the one-clarification hold. |
+   | `CLASSIFIER_PROVIDER` | `groq`, or `local` |
+   | `GROQ_API_KEY` | Your key, when using Groq |
+
+On serverless there is no background timer. The scheduler runs at the start of every API request instead, and the UI polls every 10s, so a due check-in still appears on its own. The claim is atomic: a conditional `UPDATE` on `next_due_at`, then a single `INSERT … WHERE NOT EXISTS (open)`. That means concurrent instances never duplicate a check-in.
+
+To check a build locally before pushing:
+
+```bash
+npm run vercel-build && node scripts/vercel-local.mjs   # http://localhost:3000, same routing as Vercel
+npm run vercel-build && E2E_VERCEL=1 npm run e2e        # the full judge demo against the build output
 ```
 
 ## Judge demo (about 5 minutes)
@@ -125,8 +154,8 @@ Compare providers with `npm run eval -- --provider groq`.
 
 ## Scheduling
 
-- The schedule (daily or weekdays, `HH:MM`, IANA timezone) is persisted in SQLite.
-- A **server-side** scheduler ticks every 15s. When `now ≥ next_due_at` it creates a real `ready` check-in, then advances `next_due_at`. Missed slots, for example while the laptop is asleep, collapse into one check-in.
+- The schedule (daily or weekdays, `HH:MM`, IANA timezone) is persisted in SQLite (Postgres on Vercel).
+- A **server-side** scheduler ticks every 15s (on Vercel: at the start of every API request). When `now ≥ next_due_at` it creates a real `ready` check-in, then advances `next_due_at`. Missed slots, for example while the laptop is asleep, collapse into one check-in.
 - "Check in now" calls the same `createDueCheckin()`.
 - For a demo, `first_due_in_seconds` sets a real due time (for example, 60s out) that the scheduler then fires.
 - Still sends **no notifications**. A due check-in shows up in the app.
@@ -136,12 +165,12 @@ Compare providers with `npm run eval -- --provider groq`.
 
 | Where | What | Free text? |
 | --- | --- | --- |
-| SQLite `data/still.db` | Schedule. Per check-in: id, source, status, timestamps, outcome, skill id, **executor, action start/end, action result**, classifier source | **No.** There is no column for it. |
-| Server memory, clarification only | If one clarification is needed, the response is held so its safety can be re-checked, then dropped (15 min maximum) | Yes, in RAM only. Never written to disk. |
+| SQLite `data/still.db` (Postgres on Vercel) | Schedule. Per check-in: id, source, status, timestamps, outcome, skill id, **executor, action start/end, action result**, classifier source | **No.** There is no column for it. |
+| Sealed clarification hold, clarification only | If one clarification is needed, the server encrypts the response with AES-256-GCM (key from `STILL_SECRET`, bound to this check-in id, 15 min expiry) and hands back the opaque blob. The page keeps it in memory only, never in browser storage. It returns it once with the choice so the original's safety is re-checked. A missing, tampered, expired or foreign hold offers **no** skill. | Encrypted, in page memory only. Never written to any DB, log or storage. |
 | HTTP response to the student | Extracted `context`, for example "three assignments due this week", shown once | Never stored, logged or put in the trace |
 | Server logs | Event codes and ids only. No request bodies, not even on JSON parse errors. | No |
 | Browser | Only the opaque session token, in `sessionStorage`. No response text. | No |
-| Agent trace (memory) | Last 20 check-ins as step codes and reviewed labels. Cleared on restart. | No |
+| Agent trace (`agent_runs` table) | Last 20 check-ins as step codes and reviewed labels, pruned on write | No |
 | Classifier provider | Only with `groq`: the text is sent for classification, and Groq's retention policy applies | Leaves the machine |
 
 Wording used in the product: **"Your response isn't stored by Still."** The protocol view always discloses: **"When Groq is

@@ -4,3 +4,5 @@ data/*.db*
 .env
 *.log
 screenshots/
+.vercel/
+web/public/img/

@@ -3,16 +3,20 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Db } from "./db.js";
+import type { Store } from "./store.js";
 import { checkinConfig, crisisPhrases, crisisPhraseCount, helplines, needs, skills, skillsReview, skillById } from "./config.js";
-import { createDueCheckin, getOpenCheckin, getSchedule, saveSchedule, expireStale, OPEN_STATUSES } from "./scheduler.js";
+import { createDueCheckin, getOpenCheckin, getSchedule, saveSchedule, expireStale, tick, OPEN_STATUSES } from "./scheduler.js";
 import { startCheckin, respond, clarify, actCheckin, closeCheckin, skipCheckin, resumeCheckin, endCheckin, HttpError } from "./checkins.js";
 import type { Classifier } from "./pipeline/classify/types.js";
 import { recentRuns } from "./demoLog.js";
 import { isValidTimeZone } from "./time.js";
 import { log } from "./log.js";
 
-export interface AppDeps { db: Db; classifier: Classifier; clock?: () => number; tickMs?: number }
+export interface AppDeps {
+  db: Store; classifier: Classifier; clock?: () => number; tickMs?: number;
+  /** Serverless: run one scheduler pass at the start of each API request (no long-lived timer). */
+  tickOnRequest?: boolean;
+}
 
 const publicCheckin = (c: { id: string; status: string; source: string; due_at: number; expires_at: number; started_at: number | null }) => ({
   id: c.id, status: c.status, source: c.source, due_at: c.due_at, expires_at: c.expires_at, started_at: c.started_at,
@@ -20,28 +24,32 @@ const publicCheckin = (c: { id: string; status: string; source: string; due_at: 
   closes_at: c.started_at ? c.started_at + checkinConfig.in_progress_timeout_minutes * 60_000 : c.expires_at,
 });
 
-export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: AppDeps) {
+export function createApp({ db, classifier, clock = Date.now, tickMs = 15000, tickOnRequest = false }: AppDeps) {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "4kb" }));
-  const wrap = (fn: (req: Request, res: Response) => unknown) =>
-    (req: Request, res: Response, next: NextFunction) => Promise.resolve(fn(req, res)).catch(next);
+  const route = (fn: (req: Request, res: Response) => Promise<unknown>) =>
+    (req: Request, res: Response, next: NextFunction) => { fn(req, res).catch(next); };
+  // Serverless scheduler: one pass before every API request, so a due check-in exists by the time anyone looks.
+  if (tickOnRequest) app.use("/api", (_req, _res, next) => { tick(db, clock()).then(() => next(), next); });
 
-  app.get("/api/state", (_req, res) => {
+  app.get("/api/state", route(async (_req, res) => {
     const now = clock();
-    expireStale(db, now);
-    const schedule = getSchedule(db);
-    const open = getOpenCheckin(db);
-    const last = db.prepare(`SELECT status, outcome, skill_id, closed_at, executor, action_result FROM checkins
-      WHERE status NOT IN ('ready','in_progress','clarifying','offered','acting') ORDER BY COALESCE(closed_at, created_at) DESC, rowid DESC LIMIT 1`)
-      .get() as { status: string; outcome: string | null; skill_id: string | null; closed_at: number | null; executor: string | null; action_result: string | null } | undefined;
+    await expireStale(db, now);
+    const schedule = await getSchedule(db);
+    const open = await getOpenCheckin(db);
+    const last = await db.get<{ status: string; outcome: string | null; skill_id: string | null; closed_at: number | null; executor: string | null; action_result: string | null }>(
+      `SELECT status, outcome, skill_id, closed_at, executor, action_result FROM checkins
+      WHERE status NOT IN ('ready','in_progress','clarifying','offered','acting') ORDER BY COALESCE(closed_at, created_at) DESC, created_at DESC LIMIT 1`);
     res.json({
       now,
       schedule: schedule ? {
         cadence: schedule.cadence, time_local: schedule.time_local, timezone: schedule.timezone,
         enabled: !!schedule.enabled, next_due_at: schedule.next_due_at,
       } : null,
-      scheduler: { runs_on: "server", tick_seconds: Math.round(tickMs / 1000), notifications: "none — shown in the app when due" },
+      scheduler: tickOnRequest
+        ? { runs_on: "server, on each request (serverless)", tick_seconds: 0, notifications: "none — shown in the app when due" }
+        : { runs_on: "server", tick_seconds: Math.round(tickMs / 1000), notifications: "none — shown in the app when due" },
       open_checkin: open ? publicCheckin(open) : null,
       last_checkin: last ? {
         status: last.status, outcome: last.outcome, closed_at: last.closed_at,
@@ -51,11 +59,12 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
         action_result: last.outcome === "help" ? null : last.action_result,
       } : null,
       classifier: classifier.info,
+      storage: db.kind,
       helplines,
     });
-  });
+  }));
 
-  app.put("/api/schedule", (req, res) => {
+  app.put("/api/schedule", route(async (req, res) => {
     const b = req.body ?? {};
     const cadence = b.cadence;
     const time_local = b.time_local;
@@ -65,32 +74,34 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
     if (typeof timezone !== "string" || !isValidTimeZone(timezone)) throw new HttpError(400, "invalid_timezone");
     const first = b.first_due_in_seconds;
     if (first !== undefined && (!Number.isInteger(first) || first < 10 || first > 3600)) throw new HttpError(400, "invalid_first_due");
-    const s = saveSchedule(db, { cadence, time_local, timezone, enabled: b.enabled !== false, first_due_in_seconds: first }, clock());
+    const s = await saveSchedule(db, { cadence, time_local, timezone, enabled: b.enabled !== false, first_due_in_seconds: first }, clock());
     res.json({ cadence: s.cadence, time_local: s.time_local, timezone: s.timezone, enabled: !!s.enabled, next_due_at: s.next_due_at });
-  });
+  }));
 
   // "Check in now" — the same creation path the scheduler uses.
-  app.post("/api/checkins/now", (_req, res) => {
-    const { checkin, created } = createDueCheckin(db, "manual", clock());
+  app.post("/api/checkins/now", route(async (_req, res) => {
+    const { checkin, created } = await createDueCheckin(db, "manual", clock());
     res.status(created ? 201 : 200).json({ checkin: publicCheckin(checkin), created });
-  });
-
-  app.post("/api/checkins/:id/start", (req, res) => { res.json(startCheckin(db, String(req.params.id), clock())); });
-  app.post("/api/checkins/:id/respond", wrap(async (req, res) => {
-    res.json(await respond(db, classifier, String(req.params.id), req.body?.token, req.body?.text, clock));
   }));
-  app.post("/api/checkins/:id/clarify", wrap(async (req, res) => {
-    res.json(await clarify(db, classifier, String(req.params.id), req.body?.token, req.body?.choice, clock));
-  }));
-  app.post("/api/checkins/:id/act", (req, res) => { res.json(actCheckin(db, String(req.params.id), req.body?.token, clock())); });
-  app.post("/api/checkins/:id/close", (req, res) => {
-    res.json(closeCheckin(db, String(req.params.id), req.body?.token, clock(), req.body?.action_result));
-  });
-  app.post("/api/checkins/:id/skip", (req, res) => { res.json(skipCheckin(db, String(req.params.id), clock())); });
-  app.post("/api/checkins/:id/resume", (req, res) => { res.json(resumeCheckin(db, String(req.params.id), clock())); });
-  app.post("/api/checkins/:id/end", (req, res) => { res.json(endCheckin(db, String(req.params.id), clock())); });
 
-  app.get("/api/protocol", (_req, res) => {
+  const id = (req: Request) => String(req.params.id);
+  app.post("/api/checkins/:id/start", route(async (req, res) => { res.json(await startCheckin(db, id(req), clock())); }));
+  app.post("/api/checkins/:id/respond", route(async (req, res) => {
+    res.json(await respond(db, classifier, id(req), req.body?.token, req.body?.text, clock));
+  }));
+  app.post("/api/checkins/:id/clarify", route(async (req, res) => {
+    res.json(await clarify(db, classifier, id(req), req.body?.token, req.body?.choice, req.body?.hold, clock));
+  }));
+  app.post("/api/checkins/:id/act", route(async (req, res) => { res.json(await actCheckin(db, id(req), req.body?.token, clock())); }));
+  app.post("/api/checkins/:id/close", route(async (req, res) => {
+    res.json(await closeCheckin(db, id(req), req.body?.token, clock(), req.body?.action_result));
+  }));
+  app.post("/api/checkins/:id/skip", route(async (req, res) => { res.json(await skipCheckin(db, id(req), clock())); }));
+  app.post("/api/checkins/:id/resume", route(async (req, res) => { res.json(await resumeCheckin(db, id(req), clock())); }));
+  app.post("/api/checkins/:id/end", route(async (req, res) => { res.json(await endCheckin(db, id(req), clock())); }));
+
+  app.get("/api/protocol", route(async (_req, res) => {
+    const runs = await recentRuns(db);
     res.json({
       pipeline: [
         { step: "trigger", text: "A check-in is created by the server scheduler at the student's chosen time (or by “Check in now”, the same path)." },
@@ -111,11 +122,11 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
       helplines,
       classifier: classifier.info,
       storage: [
-        { where: "SQLite (data/still.db)", what: "Schedule; per check-in: id, source, status, timestamps, outcome, skill id, executor, action start/end and result, classifier source.", text_stored: false },
-        { where: "Server memory (clarification only)", what: "If one clarification is needed, the response is held in memory so its safety can be re-checked, then dropped (at most 15 min). Never written to disk.", text_stored: false },
+        { where: db.kind === "postgres" ? "Postgres (Neon)" : "SQLite", what: "Schedule; per check-in: id, source, status, timestamps, outcome, skill id, executor, action start/end and result, classifier source.", text_stored: false },
+        { where: "Sealed hold (clarification only)", what: "If one clarification is needed, the response is encrypted (AES-256-GCM, bound to this check-in, 15 min expiry) and kept in page memory only, so its safety can be re-checked once. Never written to any database, log or browser storage.", text_stored: false },
         { where: "Server logs", what: "Event codes and ids only. No request bodies.", text_stored: false },
-        { where: "Browser", what: "Nothing written to localStorage/sessionStorage. Response text lives in page memory until submitted, then cleared.", text_stored: false },
-        { where: "Demo log (memory)", what: "Last 20 pipeline step codes, no text. Cleared on server restart.", text_stored: false },
+        { where: "Browser", what: "Only the opaque session token, in sessionStorage. Response text lives in page memory until submitted, then cleared.", text_stored: false },
+        { where: "Agent trace", what: "Last 20 check-ins as pipeline step codes and reviewed labels, no text. Pruned on write.", text_stored: false },
         {
           where: `Classifier: ${classifier.info.destination}`,
           what: classifier.info.sends_text_off_machine
@@ -131,9 +142,9 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
         "Still does not contact anyone on your behalf.",
       ],
       open_statuses: OPEN_STATUSES,
-      recent_runs: recentRuns(),
+      recent_runs: runs,
     });
-  });
+  }));
 
   app.use("/api", (_req, _res, next) => next(new HttpError(404, "not_found")));
 

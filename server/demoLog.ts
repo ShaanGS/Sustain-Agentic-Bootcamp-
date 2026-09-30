@@ -1,11 +1,12 @@
-// In-memory agent trace of recent check-ins for the protocol view.
-// Holds step codes and reviewed labels only — never student text or extracted context.
-// Cleared when the server restarts.
+// Agent trace of recent check-ins for the protocol view, kept in the store so it survives across
+// serverless instances. Holds step codes and reviewed labels only — never student text or context.
+import type { Store } from "./store.js";
+
 export type StepName = "trigger" | "observe" | "safety" | "model" | "understand" | "decide" | "act" | "end";
 export interface TraceStep {
   step: StepName;
   status: "pass" | "hit" | "skipped" | "fail" | "pending";
-  /** Short observable label, e.g. "Clear", "PRIORITIZE", "FOCUS_TIMER · 15 min". */
+  /** Short observable label, e.g. "Clear", "PRIORITIZE", "Focus timer · 15 min". */
   label: string;
   detail: string;
   /** Measured duration in ms. Absent when the step did not run. */
@@ -19,22 +20,29 @@ export interface DemoRun {
   total_ms: number;         // measured server time for the respond request
 }
 
-const MAX = 20;
-const runs: DemoRun[] = [];
+const KEEP = 20;
 
-export function recordRun(run: DemoRun) {
-  const i = runs.findIndex((r) => r.checkin === run.checkin);
-  if (i >= 0) runs.splice(i, 1);
-  runs.unshift(run);
-  if (runs.length > MAX) runs.length = MAX;
+export async function recordRun(db: Store, run: DemoRun) {
+  await db.run(`INSERT INTO agent_runs (checkin, at, steps, outcome, total_ms) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(checkin) DO UPDATE SET at = excluded.at, steps = excluded.steps, outcome = excluded.outcome, total_ms = excluded.total_ms`,
+    [run.checkin, run.at, JSON.stringify(run.steps), run.outcome, run.total_ms]);
+  await db.run(`DELETE FROM agent_runs WHERE checkin NOT IN (SELECT checkin FROM agent_runs ORDER BY at DESC LIMIT ${KEEP})`);
 }
-/** Adds or replaces a step on an existing run (e.g. ACT started, END). */
-export function updateRun(checkin: string, step: TraceStep, outcome?: string) {
-  const r = runs.find((x) => x.checkin === checkin);
-  if (!r) return;
-  const i = r.steps.findIndex((s) => s.step === step.step);
-  if (i >= 0) r.steps[i] = step; else r.steps.push(step);
-  if (outcome) r.outcome = outcome;
+
+/** Adds or replaces steps on an existing run (e.g. ACT started, END). */
+export async function updateRun(db: Store, checkin: string, steps: TraceStep[], outcome?: string) {
+  const row = await db.get<{ steps: string; outcome: string }>(`SELECT steps, outcome FROM agent_runs WHERE checkin = ?`, [checkin]);
+  if (!row) return;
+  const list = JSON.parse(row.steps) as TraceStep[];
+  for (const step of steps) {
+    const i = list.findIndex((s) => s.step === step.step);
+    if (i >= 0) list[i] = step; else list.push(step);
+  }
+  await db.run(`UPDATE agent_runs SET steps = ?, outcome = ? WHERE checkin = ?`, [JSON.stringify(list), outcome ?? row.outcome, checkin]);
 }
-export const recentRuns = () => runs.map((r) => ({ ...r, steps: r.steps.slice() }));
-export const clearRuns = () => { runs.length = 0; };
+
+export async function recentRuns(db: Store): Promise<DemoRun[]> {
+  const rows = await db.all<{ checkin: string; at: number; steps: string; outcome: string; total_ms: number }>(
+    `SELECT checkin, at, steps, outcome, total_ms FROM agent_runs ORDER BY at DESC LIMIT ${KEEP}`);
+  return rows.map((r) => ({ ...r, total_ms: Number(r.total_ms), steps: JSON.parse(r.steps) as TraceStep[] }));
+}

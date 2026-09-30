@@ -29,7 +29,7 @@ export interface Action {
 export interface Context { situation: string | null; focus_target: string | null; deadline: string | null }
 export type RouteResult =
   | { route: "skill"; need_id: string; understood: string; context: Context; skill: Skill; action: Action; status: "offered"; trace: TraceStep[]; total_ms: number }
-  | { route: "clarify"; reason: "uncertain" | "classifier_failed"; options: { need_id: string; label: string }[]; status: "clarifying"; trace: TraceStep[]; total_ms: number }
+  | { route: "clarify"; reason: "uncertain" | "classifier_failed"; options: { need_id: string; label: string }[]; status: "clarifying"; hold: string; trace: TraceStep[]; total_ms: number }
   | { route: "help"; reason: "explicit_phrase" | "model_high_risk" | "recheck_high_risk" | "student_asked_for_person"; kind: "emergency" | "support"; helplines: Helplines; status: "help_shown"; trace: TraceStep[]; total_ms: number };
 export interface ActResult { status: "acting"; executor: ExecutorType; started_at: number; ends_at: number; already_running: boolean }
 
@@ -79,7 +79,7 @@ export const api = {
   checkInNow: () => call<{ checkin: OpenCheckin; created: boolean }>("POST", "/checkins/now"),
   start: (id: string) => call<StartResult>("POST", `/checkins/${id}/start`),
   respond: (id: string, token: string, text: string) => call<RouteResult>("POST", `/checkins/${id}/respond`, { token, text }),
-  clarify: (id: string, token: string, choice: string) => call<RouteResult>("POST", `/checkins/${id}/clarify`, { token, choice }),
+  clarify: (id: string, token: string, choice: string, hold: string) => call<RouteResult>("POST", `/checkins/${id}/clarify`, { token, choice, hold }),
   act: (id: string, token: string) => call<ActResult>("POST", `/checkins/${id}/act`, { token }),
   close: (id: string, token: string, action_result?: string) => call<{ status: string; action_result: string | null }>("POST", `/checkins/${id}/close`, { token, action_result }),
   skip: (id: string) => call<{ status: string }>("POST", `/checkins/${id}/skip`),

@@ -130,9 +130,9 @@ export function App() {
   };
   const choose = async (choice: string) => {
     if (flow.kind !== "clarify") return;
-    const { id, token } = flow;
+    const { id, token, result } = flow;
     setFlow({ ...flow, busy: true });
-    try { routeTo(id, token, await api.clarify(id, token, choice), "clarify"); } catch (e) { lost(e); }
+    try { routeTo(id, token, await api.clarify(id, token, choice, result.hold), "clarify"); } catch (e) { lost(e); }
   };
   // ACT — the one executor the server attached. The server records the start (idempotent), then it runs here.
   const setRun = (run: RunState) => setFlow((f) => (f.kind === "result" ? { ...f, run } : f));
