@@ -1,71 +1,88 @@
 {
-  "_note": "Reviewed skills allowlist. Copy is fixed; the model never writes advice. Reviewed against the team's content checklist: no diagnosis names, no treatment or outcome claims, one small action, under 5 minutes. This is not a clinical review.",
-  "review": { "reviewed_by": "Still team content checklist", "reviewed_on": "2026-09-29" },
+  "_note": "Reviewed skills allowlist. Copy is fixed; the model never writes advice. Each skill has exactly one executor; its type, duration and limits are server-controlled. The model may only supply short display context (e.g. what to focus on). Reviewed against the team's content checklist: no diagnosis names, no treatment or outcome claims, one small action. This is not a clinical review.",
+  "review": { "reviewed_by": "Still team content checklist", "reviewed_on": "2026-09-30" },
   "skills": [
     {
       "id": "PRIORITIZE",
       "title": "Prioritize",
       "summary": "Pick one task, not three.",
-      "minutes": 3,
+      "minutes": 15,
+      "next_step": "Start with the one due soonest. Work only on that for 15 minutes.",
       "steps": [
-        "Write every task you're juggling on one list.",
-        "Circle the one with the nearest deadline or the biggest cost if it slips.",
-        "Write the very first 10-minute step for that one task — only that one."
-      ]
+        "Pick the task with the nearest deadline.",
+        "Close everything that isn't that task.",
+        "Work on only that until the timer ends."
+      ],
+      "executor": { "type": "FOCUS_TIMER", "duration_s": 900, "label": "15-minute focus", "cta": "Start 15-minute focus", "default_target": "the task due soonest" }
     },
     {
-      "id": "TEN_MINUTE_START",
-      "title": "Ten-minute start",
+      "id": "START_SMALL",
+      "title": "Start small",
       "summary": "Make starting smaller than the task.",
       "minutes": 10,
+      "next_step": "Open it and do the smallest visible piece for 10 minutes. You can stop when the timer ends.",
       "steps": [
-        "Set a timer for 10 minutes.",
-        "Open the task and do the smallest visible piece — a heading, one line, one question.",
-        "When the timer ends, you may stop. If you keep going, that's a bonus."
-      ]
+        "Open the thing you've been avoiding.",
+        "Do the smallest visible piece — a heading, one line, one question.",
+        "When the timer ends you may stop. Carrying on is a bonus."
+      ],
+      "executor": { "type": "FOCUS_TIMER", "duration_s": 600, "label": "10-minute focus", "cta": "Start 10-minute focus", "default_target": "the first small piece" }
     },
     {
       "id": "PACED_BREATHING",
       "title": "Paced breathing",
       "summary": "Slow your breathing for one minute.",
-      "minutes": 2,
+      "minutes": 1,
+      "next_step": "Follow the guide: breathe in for 4, out for 6. Six rounds, one minute.",
       "steps": [
         "Breathe in through your nose for a count of 4.",
-        "Hold for 4, then breathe out slowly for a count of 6.",
-        "Repeat six times, then notice one thing you can see around you."
-      ]
+        "Breathe out slowly for a count of 6.",
+        "Six rounds. Then notice one thing you can see around you."
+      ],
+      "executor": { "type": "BREATHING_GUIDE", "duration_s": 60, "label": "60-second reset", "cta": "Begin 60-second reset",
+        "phases": [ { "label": "Breathe in", "seconds": 4 }, { "label": "Breathe out", "seconds": 6 } ], "rounds": 6 }
     },
     {
       "id": "REACH_OUT",
       "title": "Reach out to one person",
       "summary": "One small message to someone you trust.",
-      "minutes": 3,
+      "minutes": 2,
+      "next_step": "Copy this message and send it to one person you'd be okay hearing from.",
       "steps": [
-        "Think of one person you'd be okay hearing from — a friend, sibling, classmate.",
-        "Send a short message. It can be as simple as \"hey, free to talk later?\"",
+        "Think of one person — a friend, sibling, classmate.",
+        "Copy the message below and send it yourself.",
         "You don't have to explain everything. Reaching out is the whole step."
-      ]
+      ],
+      "executor": { "type": "COPY_MESSAGE", "label": "message ready to copy", "cta": "Copy message",
+        "message": "Hey — are you free to talk for a bit later today?" }
     },
     {
       "id": "WIND_DOWN",
       "title": "Wind down",
-      "summary": "A short routine before sleep.",
-      "minutes": 5,
+      "summary": "A two-minute reset before rest.",
+      "minutes": 2,
+      "next_step": "Follow four short cues, 30 seconds each. Screens down after.",
       "steps": [
-        "Pick a stop time for screens tonight and set an alarm for it.",
-        "Write down anything still on your mind so it's out of your head and on paper.",
-        "Dim the lights and do something low-effort until you feel sleepy."
-      ]
+        "Put your phone face down and dim the lights.",
+        "Write down anything still on your mind.",
+        "Relax your shoulders and jaw, then rest."
+      ],
+      "executor": { "type": "GUIDED_RESET", "duration_s": 120, "label": "2-minute reset", "cta": "Begin 2-minute reset",
+        "cues": [
+          "Put your phone face down and dim the lights.",
+          "Write down one thing still on your mind — then leave it there.",
+          "Drop your shoulders. Unclench your jaw.",
+          "Breathe slowly. When this ends, screens down."
+        ] }
     },
     {
       "id": "CLOSE_OK",
       "title": "Nothing to fix today",
       "summary": "Sounds like today is okay. That's a fine check-in.",
       "minutes": 0,
-      "steps": [
-        "No action needed.",
-        "Still will check in again at your next scheduled time."
-      ]
+      "next_step": "No action needed. Still will check in again at your next scheduled time.",
+      "steps": [],
+      "executor": { "type": "ACKNOWLEDGE", "label": "check-in noted", "cta": "Close check-in" }
     }
   ]
 }

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { X, Lock, ChevronDown, ListChecks, Timer, Wind, MessageCircle, Moon, Sun, Phone, Sparkles, CalendarDays } from "lucide-react";
-import type { AppState, ClassifierInfo, RouteResult, StartResult } from "../lib/api";
+import { X, Lock, ChevronDown, ListChecks, Timer, Wind, MessageCircle, Moon, Sun, Phone, Sparkles, CalendarDays, Target, Check, Copy } from "lucide-react";
+import type { Action, AppState, ClassifierInfo, RouteResult, StartResult } from "../lib/api";
 import { cadenceLabel, clock, dayLabel } from "../lib/format";
 import { Button } from "../components/Button";
 import { Photo } from "../components/Photo";
 import { Trace } from "../components/Trace";
+import { ActionRunner } from "../components/Executor";
 
 type SkillR = Extract<RouteResult, { route: "skill" }>;
 type ClarR = Extract<RouteResult, { route: "clarify" }>;
 
-const STEPS = ["Prompt", "Safety", "Understand", "One step", "End"] as const;
+const STEPS = ["Observe", "Safety", "Understand", "Decide", "Act", "End"] as const;
 function Journey({ now }: { now: (typeof STEPS)[number][] }) {
   const first = Math.min(...now.map((n) => STEPS.indexOf(n)));
   return (
@@ -47,7 +48,7 @@ export function PromptPanel({ start, submitting, error, initialText, onSubmit, o
   return (
     <motion.section className="panel focus" {...enter}>
       <PanelHead title="Check-in" onLeave={submitting ? undefined : onLeave} />
-      <Journey now={submitting ? ["Safety", "Understand"] : ["Prompt"]} />
+      <Journey now={submitting ? ["Safety", "Understand", "Decide"] : ["Observe"]} />
       <div>
         <p className="label" style={{ margin: "4px 0 8px" }}>Question</p>
         <h1 className="question">{start.prompt}</h1>
@@ -55,7 +56,7 @@ export function PromptPanel({ start, submitting, error, initialText, onSubmit, o
       {submitting ? (
         <div className="checking" role="status" aria-live="polite">
           <span className="spinner" aria-hidden />
-          <div><b>Checking your response</b><span>Safety check first, then one next step.</span></div>
+          <div><b>Checking your response</b><span>Safety first — then Still understands what's going on, decides one step and gets it ready.</span></div>
         </div>
       ) : (
         <div>
@@ -78,30 +79,53 @@ export function PromptPanel({ start, submitting, error, initialText, onSubmit, o
   );
 }
 
-/* ---------------- one next step (ref 2 journal entry) ---------------- */
-export function ResultPanel({ result, classifier, via, closing, onDone }: {
-  result: SkillR; classifier: ClassifierInfo; via: "classifier" | "clarify"; closing: boolean; onDone: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const { skill } = result;
-  const d = new Date();
+/* ---------------- one next step (ref 2 journal entry) + the action ---------------- */
+export type RunState = { phase: "idle" | "starting" | "running" | "done"; startedAt?: number; result?: string };
+
+const RESULT_TEXT: Record<string, string> = {
+  completed: "completed", stopped: "stopped early — that still counts", copied: "copied — Still hasn't sent anything", acknowledged: "noted",
+};
+
+/** SAFETY → UNDERSTAND → DECIDE → ACT → END, as observable labels from real state (not reasoning). */
+function AgentTrail({ result, run }: { result: SkillR; run: RunState }) {
+  const safety = result.trace.find((t) => t.step === "safety")?.label ?? "Clear";
+  const act = run.phase === "running" ? "running" : run.phase === "done" ? RESULT_TEXT[run.result ?? ""]?.split(" ")[0] ?? "done" : "ready";
+  const items: [string, string, "done" | "now" | "todo"][] = [
+    ["Safety", `✓ ${safety}`, "done"],
+    ["Understand", `✓ ${result.understood}`, "done"],
+    ["Decide", `→ ${result.skill.title}`, "done"],
+    ["Act", `${result.action.label} · ${act}`, run.phase === "done" ? "done" : "now"],
+    ["End", run.phase === "done" ? "ready to close" : "after the action", run.phase === "done" ? "now" : "todo"],
+  ];
   return (
-    <motion.section className="panel focus wide" {...enter}>
-      <PanelHead title={skill.id === "CLOSE_OK" ? "No step needed" : "One next step"} />
-      <Journey now={["One step"]} />
-      <article className="entry">
-        <header className="entry-head">
-          <div className="datebox"><span>{d.toLocaleDateString("en-US", { month: "short" })}</span><b>{d.getDate()}</b></div>
-          <div><h2>{skill.title}</h2><p>{skill.summary}</p></div>
-          {skill.minutes > 0 && <span className="tag">~{skill.minutes} min</span>}
-        </header>
-        <div className="entry-grid">
-        <div className="grid-media">
-          <div className="big"><Photo name={skill.id} /></div>
-          <div className="tile lav"><span>Matched</span><b>{result.matched_label}</b></div>
-          <div className="tile green"><span>Selected action</span><b>{result.selected_action}</b></div>
+    <div className="trail" aria-label="What Still did">
+      {items.map(([k, v, st]) => <span key={k} data-s={st}><b>{k}</b>{v}</span>)}
+    </div>
+  );
+}
+
+function ActionPanel({ action, skill, run, closing, onStart, onFinish, onClose }: {
+  action: Action; skill: SkillR["skill"]; run: RunState; closing: boolean;
+  onStart: () => void; onFinish: (r: "completed" | "stopped") => void; onClose: () => void;
+}) {
+  if (run.phase === "running" && run.startedAt) return <ActionRunner action={action} startedAt={run.startedAt} onFinish={onFinish} />;
+  if (run.phase === "done") {
+    return (
+      <>
+        <div className="act-done" role="status">
+          <b><Check size={18} style={{ verticalAlign: -3, marginRight: 6 }} />{action.label} — {RESULT_TEXT[run.result ?? ""] ?? "done"}</b>
+          <span>{action.executor === "COPY_MESSAGE" ? "Paste it to one person you trust. Sending is up to you." : "That was the one step. Still stops here."}</span>
         </div>
-        <div className="entry-side">
+        <Button block onClick={onClose} disabled={closing}>{closing ? "Closing…" : "Done — close check-in"}</Button>
+      </>
+    );
+  }
+  return (
+    <>
+      <p className="next-step"><small>One next step</small>{skill.next_step}</p>
+      {action.target && <span className="target"><Target size={15} /> Focus on {action.target}</span>}
+      {action.executor === "COPY_MESSAGE" && action.message && <div className="msg-box">“{action.message}”</div>}
+      {skill.steps.length > 0 && action.executor !== "COPY_MESSAGE" && (
         <ol className="steps">
           {skill.steps.map((s, i) => (
             <motion.li key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 + i * 0.06, duration: 0.3 }}>
@@ -109,25 +133,58 @@ export function ResultPanel({ result, classifier, via, closing, onDone }: {
             </motion.li>
           ))}
         </ol>
-          <div className="side-done">
-            <Button block onClick={onDone} disabled={closing}>{closing ? "Closing…" : "Done — close check-in"}</Button>
+      )}
+      <Button block onClick={onStart} disabled={run.phase === "starting" || closing}>
+        {action.executor === "COPY_MESSAGE" ? <><Copy size={16} style={{ verticalAlign: -3, marginRight: 8 }} />{action.cta}</> : action.cta}
+      </Button>
+      {action.executor !== "ACKNOWLEDGE" && <button className="link-btn" style={{ alignSelf: "flex-start" }} onClick={onClose} disabled={closing}>Skip — close check-in</button>}
+    </>
+  );
+}
+
+export function ResultPanel({ result, classifier, via, run, closing, onStart, onFinish, onDone }: {
+  result: SkillR; classifier: ClassifierInfo; via: "classifier" | "clarify"; run: RunState; closing: boolean;
+  onStart: () => void; onFinish: (r: "completed" | "stopped") => void; onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { skill, action, context } = result;
+  const d = new Date();
+  const mentioned = context?.situation ? `You mentioned ${context.situation}.` : skill.summary;
+  return (
+    <motion.section className="panel focus wide" {...enter}>
+      <PanelHead title={skill.id === "CLOSE_OK" ? "No step needed" : "One next step"} />
+      <AgentTrail result={result} run={run} />
+      <article className="entry">
+        <header className="entry-head">
+          <div className="datebox"><span>{d.toLocaleDateString("en-US", { month: "short" })}</span><b>{d.getDate()}</b></div>
+          <div><h2>{skill.title}</h2><p>{mentioned}</p></div>
+          {skill.minutes > 0 && <span className="tag">~{skill.minutes} min</span>}
+        </header>
+        <div className="entry-grid">
+          <div className="grid-media">
+            <div className="big"><Photo name={skill.id} /></div>
+            <div className="tile lav"><span>Understood</span><b>{result.understood}</b></div>
+            <div className="tile green"><span>Action</span><b>{action.label}</b></div>
+          </div>
+          <div className="entry-side">
+            <ActionPanel action={action} skill={skill} run={run} closing={closing} onStart={onStart} onFinish={onFinish} onClose={onDone} />
             <span className="privacy"><Lock size={15} aria-hidden /> Your response isn't stored by Still.</span>
           </div>
-        </div>
         </div>
         <div className="reflect">
           <span className="reflect-ico" aria-hidden><Sparkles size={20} /></span>
           <div>
             <h3>Why this step</h3>
-            <p>{via === "clarify" ? "You chose" : "Your response matched"} “{result.matched_label}”, so Still offered the one reviewed step for that. The advice comes from a fixed, reviewed list — Still didn't write it.</p>
+            <p>{via === "clarify" ? `You chose “${result.understood}”` : `Still identified “${result.understood}”`} and selected the approved {skill.title} skill for that situation. The steps and the {action.label} come from a fixed, reviewed list — Still didn't write them.</p>
           </div>
           <button className="chev" aria-expanded={open} aria-label="How Still decided" onClick={() => setOpen(!open)}><ChevronDown size={18} /></button>
         </div>
         <AnimatePresence initial={false}>
           {open && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: "hidden" }}>
-              <p className="label" style={{ margin: "0 0 8px" }}>How Still decided · {via === "clarify" ? "your choice → policy table" : `${classifier.provider} · ${classifier.model} → policy table`}</p>
-              <Trace steps={result.trace} totalMs={result.total_ms} />
+              <p className="label" style={{ margin: "0 0 8px" }}>Agent trace · {via === "clarify" ? "your choice → policy table" : `${classifier.provider} · ${classifier.model} → policy table`}</p>
+              <Trace totalMs={result.total_ms} steps={result.trace.map((s) => s.step !== "act" || run.phase === "idle" || run.phase === "starting" ? s
+                : { ...s, status: "pass" as const, label: `${action.label} · ${run.phase === "running" ? "running" : run.result}`, detail: `${action.executor} started by the student — recorded on the server` })} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -138,12 +195,12 @@ export function ResultPanel({ result, classifier, via, closing, onDone }: {
 
 /* ---------------- clarify ---------------- */
 const NEED_ICON: Record<string, { icon: typeof Sun; bg: string }> = {
-  too_many_tasks: { icon: ListChecks, bg: "var(--lav)" },
-  cant_get_started: { icon: Timer, bg: "var(--green-1)" },
-  wound_up: { icon: Wind, bg: "var(--peach)" },
-  feeling_cut_off: { icon: MessageCircle, bg: "#F9D7D3" },
-  sleep_or_worn_out: { icon: Moon, bg: "#E4E1F5" },
-  doing_ok: { icon: Sun, bg: "#EEF6CF" },
+  COMPETING_TASKS: { icon: ListChecks, bg: "var(--lav)" },
+  DIFFICULTY_STARTING: { icon: Timer, bg: "var(--green-1)" },
+  ACUTE_TENSION: { icon: Wind, bg: "var(--peach)" },
+  FEELING_ISOLATED: { icon: MessageCircle, bg: "#F9D7D3" },
+  SLEEP_OR_EXHAUSTION: { icon: Moon, bg: "#E4E1F5" },
+  DOING_OK: { icon: Sun, bg: "#EEF6CF" },
 };
 
 export function ClarifyPanel({ result, busy, onChoose, onClose }: {
@@ -178,12 +235,12 @@ export function ClarifyPanel({ result, busy, onChoose, onClose }: {
 }
 
 /* ---------------- done (ref 4 onboarding) ---------------- */
-export function DonePanel({ state, step, onHome }: { state: AppState; step: { id: string; title: string } | null; onHome: () => void }) {
+export function DonePanel({ state, step, onHome }: { state: AppState; step: { id: string; title: string; action?: string; result?: string | null } | null; onHome: () => void }) {
   const s = state.schedule;
   return (
     <motion.section className="done" {...enter}>
       <h1 className="title">That's the<br />check&#8209;in. <span className="mark">Done.</span></h1>
-      <p className="lead">{step ? `You left with one step: ${step.title}.` : "Closed without a step."} Still won't follow up until your next check‑in.</p>
+      <p className="lead">{step ? `One step: ${step.title}${step.action ? ` · ${step.action} ${step.result && step.result !== "not_started" ? (RESULT_TEXT[step.result] ?? step.result).split(" —")[0] : "not started"}` : ""}.` : "Closed without a step."} Still won't follow up until your next check‑in.</p>
       <div className="next-chip">
         <div className="thumb">{step ? <Photo name={step.id} /> : <Photo name="shelf" />}</div>
         <div><span>Next check&#8209;in</span><b className="tnum">{s?.next_due_at ? `${dayLabel(s.next_due_at, state.now)} · ${clock(s.next_due_at)}` : "Not scheduled"}</b></div>

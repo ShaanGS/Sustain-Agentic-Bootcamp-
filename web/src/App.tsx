@@ -7,7 +7,7 @@ import { Shell, TAB_HREF, type Tab } from "./components/Shell";
 import { SkillsCarousel } from "./components/SkillsCarousel";
 import { Today, TodaySide } from "./screens/Today";
 import { Schedule, ScheduleSide } from "./screens/Schedule";
-import { PromptPanel, ResultPanel, ClarifyPanel, DonePanel } from "./screens/Flow";
+import { PromptPanel, ResultPanel, ClarifyPanel, DonePanel, type RunState } from "./screens/Flow";
 import { Crisis, HelpTab } from "./screens/Help";
 import { How, useProtocol } from "./screens/How";
 
@@ -19,10 +19,10 @@ type HelpR = Extract<RouteResult, { route: "help" }>;
 type Flow =
   | { kind: "home" }
   | { kind: "prompt"; id: string; start: StartResult; submitting: boolean; error: string | null }
-  | { kind: "result"; id: string; token: string; result: Skill; via: "classifier" | "clarify"; closing: boolean }
+  | { kind: "result"; id: string; token: string; result: Skill; via: "classifier" | "clarify"; closing: boolean; run: RunState }
   | { kind: "clarify"; id: string; token: string; result: Clar; busy: boolean }
   | { kind: "help"; result: HelpR }
-  | { kind: "done"; step: { id: string; title: string } | null };
+  | { kind: "done"; step: { id: string; title: string; action?: string; result?: string | null } | null };
 
 function useTab(): Tab {
   const get = (): Tab => {
@@ -111,7 +111,7 @@ export function App() {
   const routeTo = (id: string, token: string, r: RouteResult, via: "classifier" | "clarify") => {
     pendingText.current = "";
     if (r.route === "help") { clearSession(); setFlow({ kind: "help", result: r }); }
-    else if (r.route === "skill") setFlow({ kind: "result", id, token, result: r, via, closing: false });
+    else if (r.route === "skill") setFlow({ kind: "result", id, token, result: r, via, closing: false, run: { phase: "idle" } });
     else setFlow({ kind: "clarify", id, token, result: r, busy: false });
   };
   const submit = async (text: string) => {
@@ -134,11 +134,35 @@ export function App() {
     setFlow({ ...flow, busy: true });
     try { routeTo(id, token, await api.clarify(id, token, choice), "clarify"); } catch (e) { lost(e); }
   };
-  const close = async () => {
+  // ACT — the one executor the server attached. The server records the start (idempotent), then it runs here.
+  const setRun = (run: RunState) => setFlow((f) => (f.kind === "result" ? { ...f, run } : f));
+  const startAction = async () => {
+    if (flow.kind !== "result" || flow.run.phase !== "idle") return;
+    const { id, token, result } = flow;
+    const a = result.action;
+    setRun({ phase: "starting" });
+    try {
+      if (a.executor === "COPY_MESSAGE" && a.message) await copyText(a.message);
+      await api.act(id, token);
+      if (a.executor === "COPY_MESSAGE") setRun({ phase: "done", result: "copied" });
+      else if (a.executor === "ACKNOWLEDGE") await close("acknowledged");
+      else setRun({ phase: "running", startedAt: Date.now() });
+    } catch (e) { lost(e); }
+  };
+  const finishAction = (result: "completed" | "stopped") => setRun({ phase: "done", result });
+
+  const close = async (forced?: string) => {
     if (flow.kind !== "result" && flow.kind !== "clarify") return;
-    const step = flow.kind === "result" ? { id: flow.result.skill.id, title: flow.result.skill.title } : null;
+    const actionResult = forced ?? (flow.kind === "result" ? flow.run.result : undefined);
+    const step = flow.kind === "result"
+      ? { id: flow.result.skill.id, title: flow.result.skill.title, action: flow.result.action.label, result: actionResult ?? "not_started" }
+      : null;
     if (flow.kind === "result") setFlow({ ...flow, closing: true }); else setFlow({ ...flow, busy: true });
-    try { await api.close(flow.id, flow.token); clearSession(); await refresh(); setFlow({ kind: "done", step }); } catch (e) { lost(e); }
+    try {
+      const r = await api.close(flow.id, flow.token, actionResult);
+      clearSession(); await refresh();
+      setFlow({ kind: "done", step: step && { ...step, result: r.action_result } });
+    } catch (e) { lost(e); }
   };
   const leave = () => { setFlow({ kind: "home" }); refresh(); };
   useEffect(() => { setNotice(null); }, [tab]);
@@ -176,10 +200,11 @@ export function App() {
     main = <PromptPanel start={flow.start} submitting={flow.submitting} error={flow.error} initialText={pendingText.current} onSubmit={submit} onLeave={leave} />;
   } else if (flow.kind === "result") {
     focus = true;
-    main = <ResultPanel result={flow.result} classifier={state.classifier} via={flow.via} closing={flow.closing} onDone={close} />;
+    main = <ResultPanel result={flow.result} classifier={state.classifier} via={flow.via} run={flow.run} closing={flow.closing}
+      onStart={startAction} onFinish={finishAction} onDone={() => close()} />;
   } else if (flow.kind === "clarify") {
     focus = true;
-    main = <ClarifyPanel result={flow.result} busy={flow.busy} onChoose={choose} onClose={close} />;
+    main = <ClarifyPanel result={flow.result} busy={flow.busy} onChoose={choose} onClose={() => close()} />;
   } else if (flow.kind === "done") {
     main = <DonePanel state={state} step={flow.step} onHome={() => goToday()} />;
   } else {
@@ -196,3 +221,12 @@ export function App() {
 }
 
 export { TAB_HREF };
+
+/** Clipboard write with a fallback for browsers without the async Clipboard API. */
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); return; } catch { /* fall through */ }
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); } finally { ta.remove(); }
+}

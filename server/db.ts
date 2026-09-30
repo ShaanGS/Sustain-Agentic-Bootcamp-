@@ -36,5 +36,12 @@ export function openDb(path: string): Db {
     );
     CREATE INDEX IF NOT EXISTS checkins_status ON checkins(status);
   `);
+  // Additive migrations for databases created by earlier versions.
+  const cols = new Set((db.prepare(`PRAGMA table_info(checkins)`).all() as { name: string }[]).map((c) => c.name));
+  const add = (name: string, type: string) => { if (!cols.has(name)) db.exec(`ALTER TABLE checkins ADD COLUMN ${name} ${type}`); };
+  add("executor", "TEXT");            // which allowlisted executor was offered (FOCUS_TIMER, …)
+  add("action_started_at", "INTEGER");
+  add("action_ends_at", "INTEGER");
+  add("action_result", "TEXT");       // completed | stopped | not_started | copied | acknowledged | timed_out
   return db;
 }

@@ -7,11 +7,11 @@
 
 /* network of connected circles — the pipeline */
 .net { position: relative; padding: 10px 0 4px; }
-.net-track { position: absolute; left: 60px; right: 60px; top: 70px; height: 6px; border-radius: 6px; background: #fff; opacity: 0.9; }
-.net-nodes { position: relative; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.net-track { position: absolute; left: 52px; right: 52px; top: 62px; height: 6px; border-radius: 6px; background: #fff; opacity: 0.9; }
+.net-nodes { position: relative; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
 .node { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
 .node-circle {
-  width: 120px; height: 120px; border-radius: 50%; background: #fff; color: var(--ink); display: grid; place-content: center;
+  width: 104px; height: 104px; border-radius: 50%; background: #fff; color: var(--ink); display: grid; place-content: center;
   font-size: var(--fs-16); font-weight: 700; line-height: 1.15; padding: 12px; box-shadow: 0 0 0 6px var(--sys-bg);
 }
 .node-circle.photo { overflow: hidden; padding: 0; }
@@ -19,9 +19,10 @@
 .node[data-s="hit"] .node-circle { background: var(--sys-hit); }
 .node[data-s="skipped"] .node-circle { background: #3A3A3A; color: #9E9A93; }
 .node[data-s="pass"] .node-circle { background: var(--sys-pass); }
-.node-status { font-family: var(--mono); font-size: 12px; color: var(--sys-text-2); min-height: 18px; }
+.node-status { font-family: var(--mono); font-size: 11.5px; color: var(--sys-text-2); min-height: 18px; display: block; max-width: 16ch; margin: 0 auto; line-height: 1.35; }
 .node[data-s="hit"] .node-status { color: var(--sys-hit); }
 .node[data-s="pass"] .node-status { color: var(--sys-pass); }
+.node[data-s="skipped"] .node-status { color: var(--sys-text-3); }
 .node p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--sys-text-3); max-width: 20ch; }
 
 /* 3-up stat card (ref 4 details) */
@@ -72,8 +73,8 @@
 
 @media (max-width: 1180px) {
   .how-grid { grid-template-columns: 1fr 1fr; }
-  .node-circle { width: 100px; height: 100px; font-size: 14px; }
-  .net-track { top: 60px; }
+  .net-nodes { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 24px; }
+  .net-track { display: none; }
 }
 @media (max-width: 900px) {
   .how-head { grid-template-columns: 1fr; }

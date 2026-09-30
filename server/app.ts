@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db } from "./db.js";
-import { checkinConfig, crisisPhrases, helplines, needs, skills, skillsReview, skillById } from "./config.js";
+import { checkinConfig, crisisPhrases, crisisPhraseCount, helplines, needs, skills, skillsReview, skillById } from "./config.js";
 import { createDueCheckin, getOpenCheckin, getSchedule, saveSchedule, expireStale, OPEN_STATUSES } from "./scheduler.js";
-import { startCheckin, respond, clarify, closeCheckin, skipCheckin, resumeCheckin, endCheckin, HttpError } from "./checkins.js";
+import { startCheckin, respond, clarify, actCheckin, closeCheckin, skipCheckin, resumeCheckin, endCheckin, HttpError } from "./checkins.js";
 import type { Classifier } from "./pipeline/classify/types.js";
 import { recentRuns } from "./demoLog.js";
 import { isValidTimeZone } from "./time.js";
@@ -32,9 +32,9 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
     expireStale(db, now);
     const schedule = getSchedule(db);
     const open = getOpenCheckin(db);
-    const last = db.prepare(`SELECT status, outcome, skill_id, closed_at FROM checkins
-      WHERE status NOT IN ('ready','in_progress','clarifying','offered') ORDER BY COALESCE(closed_at, created_at) DESC, rowid DESC LIMIT 1`)
-      .get() as { status: string; outcome: string | null; skill_id: string | null; closed_at: number | null } | undefined;
+    const last = db.prepare(`SELECT status, outcome, skill_id, closed_at, executor, action_result FROM checkins
+      WHERE status NOT IN ('ready','in_progress','clarifying','offered','acting') ORDER BY COALESCE(closed_at, created_at) DESC, rowid DESC LIMIT 1`)
+      .get() as { status: string; outcome: string | null; skill_id: string | null; closed_at: number | null; executor: string | null; action_result: string | null } | undefined;
     res.json({
       now,
       schedule: schedule ? {
@@ -47,6 +47,8 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
         status: last.status, outcome: last.outcome, closed_at: last.closed_at,
         // Skill titles are shown only for ordinary outcomes; help outcomes carry nothing extra.
         skill_title: last.outcome === "help" ? null : (last.skill_id ? skillById(last.skill_id)?.title ?? null : null),
+        action_label: last.outcome === "help" || !last.skill_id ? null : skillById(last.skill_id)?.executor.label ?? null,
+        action_result: last.outcome === "help" ? null : last.action_result,
       } : null,
       classifier: classifier.info,
       helplines,
@@ -77,10 +79,13 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
   app.post("/api/checkins/:id/respond", wrap(async (req, res) => {
     res.json(await respond(db, classifier, String(req.params.id), req.body?.token, req.body?.text, clock));
   }));
-  app.post("/api/checkins/:id/clarify", (req, res) => {
-    res.json(clarify(db, String(req.params.id), req.body?.token, req.body?.choice, clock()));
+  app.post("/api/checkins/:id/clarify", wrap(async (req, res) => {
+    res.json(await clarify(db, classifier, String(req.params.id), req.body?.token, req.body?.choice, clock));
+  }));
+  app.post("/api/checkins/:id/act", (req, res) => { res.json(actCheckin(db, String(req.params.id), req.body?.token, clock())); });
+  app.post("/api/checkins/:id/close", (req, res) => {
+    res.json(closeCheckin(db, String(req.params.id), req.body?.token, clock(), req.body?.action_result));
   });
-  app.post("/api/checkins/:id/close", (req, res) => { res.json(closeCheckin(db, String(req.params.id), req.body?.token, clock())); });
   app.post("/api/checkins/:id/skip", (req, res) => { res.json(skipCheckin(db, String(req.params.id), clock())); });
   app.post("/api/checkins/:id/resume", (req, res) => { res.json(resumeCheckin(db, String(req.params.id), clock())); });
   app.post("/api/checkins/:id/end", (req, res) => { res.json(endCheckin(db, String(req.params.id), clock())); });
@@ -88,22 +93,26 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
   app.get("/api/protocol", (_req, res) => {
     res.json({
       pipeline: [
-        { step: "session", text: "Check-in must be open and the single-use session token valid." },
-        { step: "crisis_phrase", text: `Explicit crisis phrase check (${crisisPhrases.phrases.length} reviewed phrases, local, no network). A hit stops the ordinary flow before any model call.` },
-        { step: "classifier", text: "Labels the response ORDINARY, UNCERTAIN or CRISIS and, if ORDINARY, one need id. It never writes advice." },
-        { step: "validate", text: "Output must match the schema and the needs allowlist. Timeout, error or invalid output becomes UNCERTAIN — never ORDINARY." },
-        { step: "policy", text: "Server table decides: CRISIS → human help; ORDINARY → the one skill mapped to that need; UNCERTAIN → one tap-to-choose clarification." },
-        { step: "close", text: "The check-in ends. Still does not continue the conversation." },
+        { step: "trigger", text: "A check-in is created by the server scheduler at the student's chosen time (or by “Check in now”, the same path)." },
+        { step: "observe", text: "One short response. The session token must be valid. The text is held in memory only — never stored or logged." },
+        { step: "safety", text: `Explicit backstop first: ${crisisPhraseCount} reviewed self-harm and emergency phrases, local, no network. A hit ends the ordinary flow before any model call.` },
+        { step: "model", text: "Otherwise one model call assesses risk first (SAFE / HIGH_RISK / UNCERTAIN), then one need and short context. Timeout, error or invalid output becomes UNCERTAIN — never SAFE." },
+        { step: "understand", text: "The need comes from a fixed list. Context (e.g. “three assignments due Friday”) is display-only, length-limited and never stored." },
+        { step: "decide", text: "A server table decides: HIGH_RISK → human help; SAFE → the one skill mapped to that need; UNCERTAIN → one tap-to-choose question, after which the original response is re-checked." },
+        { step: "act", text: "The skill runs one allowlisted executor — focus timer, guided breathing, guided reset, copy a message, or acknowledge. Duration and limits are server-controlled. No network, messaging, files or other tools." },
+        { step: "end", text: "The check-in closes. Still does not continue the conversation." },
       ],
+      executors: skills.map((s) => ({ skill_id: s.id, type: s.executor.type, label: s.executor.label, duration_s: s.executor.duration_s ?? null })),
       prompt: checkinConfig.prompt,
       needs: needs.map((n) => ({ id: n.id, label: n.label, skill_id: n.skill_id })),
       skills: skills.map((s) => ({ id: s.id, title: s.title, summary: s.summary })),
       skills_review: skillsReview,
-      crisis_phrases: { count: crisisPhrases.phrases.length, reviewed_on: crisisPhrases.reviewed_on },
+      crisis_phrases: { count: crisisPhraseCount, self_harm: crisisPhrases.categories.self_harm.length, emergency: crisisPhrases.categories.emergency.length, reviewed_on: crisisPhrases.reviewed_on },
       helplines,
       classifier: classifier.info,
       storage: [
-        { where: "SQLite (data/still.db)", what: "Schedule; per check-in: id, source, status, timestamps, outcome, skill id, classifier source.", text_stored: false },
+        { where: "SQLite (data/still.db)", what: "Schedule; per check-in: id, source, status, timestamps, outcome, skill id, executor, action start/end and result, classifier source.", text_stored: false },
+        { where: "Server memory (clarification only)", what: "If one clarification is needed, the response is held in memory so its safety can be re-checked, then dropped (at most 15 min). Never written to disk.", text_stored: false },
         { where: "Server logs", what: "Event codes and ids only. No request bodies.", text_stored: false },
         { where: "Browser", what: "Nothing written to localStorage/sessionStorage. Response text lives in page memory until submitted, then cleared.", text_stored: false },
         { where: "Demo log (memory)", what: "Last 20 pipeline step codes, no text. Cleared on server restart.", text_stored: false },
@@ -118,6 +127,7 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
       disclosures: [
         "Your response isn't stored by Still: not in its database, not in browser storage, not in its logs.",
         "When Groq is active, your response is sent to Groq for classification.",
+        "Context Still extracts (e.g. “three assignments due Friday”) is shown back to you once and never stored.",
         "Still does not contact anyone on your behalf.",
       ],
       open_statuses: OPEN_STATUSES,

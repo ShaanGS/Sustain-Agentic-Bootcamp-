@@ -130,7 +130,9 @@ export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onRe
 export function TodaySide({ state }: { state: AppState }) {
   const l = state.last_checkin;
   const text: Record<string, string> = {
-    completed: l?.skill_title ? `Closed after one step: ${l.skill_title}.` : "Closed without a step.",
+    completed: l?.skill_title
+      ? `One step: ${l.skill_title}${l.action_label ? ` — ${l.action_label} ${l.action_result && l.action_result !== "not_started" ? l.action_result : "not started"}` : ""}.`
+      : "Closed without a step.",
     help_shown: "Ended with human support.",
     skipped: "Skipped.",
     expired: "Not started — it expired.",

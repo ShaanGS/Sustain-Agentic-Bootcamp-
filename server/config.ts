@@ -13,7 +13,16 @@ export interface Helpline {
   id: string; name: string; description: string; numbers: HelplineNumber[];
   source_url: string; verified_on: string; verified_by: string; tags?: string[];
 }
-export interface Skill { id: string; title: string; summary: string; minutes: number; steps: string[] }
+export type ExecutorType = "FOCUS_TIMER" | "BREATHING_GUIDE" | "COPY_MESSAGE" | "GUIDED_RESET" | "ACKNOWLEDGE";
+/** Server-controlled executor definition. The model can never set type, duration or limits. */
+export interface ExecutorDef {
+  type: ExecutorType; label: string; cta: string;
+  duration_s?: number; default_target?: string; message?: string;
+  phases?: { label: string; seconds: number }[]; rounds?: number; cues?: string[];
+}
+export interface Skill {
+  id: string; title: string; summary: string; minutes: number; next_step: string; steps: string[]; executor: ExecutorDef;
+}
 export interface Need { id: string; label: string; clarify_label: string; skill_id: string }
 
 export const helplines = readJson<{ primary: Helpline; emergency: Helpline }>("helplines.json");
@@ -21,7 +30,9 @@ const skillsFile = readJson<{ review: { reviewed_by: string; reviewed_on: string
 export const skills = skillsFile.skills;
 export const skillsReview = skillsFile.review;
 export const needs = readJson<{ needs: Need[] }>("needs.json").needs;
-export const crisisPhrases = readJson<{ reviewed_on: string; phrases: string[] }>("crisis-phrases.json");
+export type CrisisCategory = "self_harm" | "emergency";
+export const crisisPhrases = readJson<{ reviewed_on: string; categories: Record<CrisisCategory, string[]> }>("crisis-phrases.json");
+export const crisisPhraseCount = Object.values(crisisPhrases.categories).reduce((n, l) => n + l.length, 0);
 export const checkinConfig = readJson<{
   prompt: string; prompt_hint: string; max_chars: number;
   ready_window_minutes: number; in_progress_timeout_minutes: number;
@@ -34,6 +45,13 @@ export const needById = (id: string) => needs.find((n) => n.id === id);
 // Fail fast if the policy table points at a skill that is not on the reviewed list.
 for (const n of needs) {
   if (!skillById(n.skill_id)) throw new Error(`needs.json: ${n.id} -> unknown skill ${n.skill_id}`);
+}
+const EXECUTOR_TYPES: ExecutorType[] = ["FOCUS_TIMER", "BREATHING_GUIDE", "COPY_MESSAGE", "GUIDED_RESET", "ACKNOWLEDGE"];
+for (const s of skills) {
+  if (!EXECUTOR_TYPES.includes(s.executor?.type)) throw new Error(`skills.json: ${s.id} has no allowlisted executor`);
+  if (s.executor.duration_s !== undefined && (s.executor.duration_s <= 0 || s.executor.duration_s > 1800)) {
+    throw new Error(`skills.json: ${s.id} executor duration out of bounds`);
+  }
 }
 
 export type ProviderName = "groq" | "ollama" | "local";

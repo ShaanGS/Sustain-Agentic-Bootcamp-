@@ -6,8 +6,8 @@ import { checkinConfig } from "./config.js";
 import { computeNextDue, type Cadence } from "./time.js";
 import { log } from "./log.js";
 
-export const OPEN_STATUSES = ["ready", "in_progress", "clarifying", "offered"] as const;
-const OPEN_SQL = `('ready','in_progress','clarifying','offered')`;
+export const OPEN_STATUSES = ["ready", "in_progress", "clarifying", "offered", "acting"] as const;
+const OPEN_SQL = `('ready','in_progress','clarifying','offered','acting')`;
 
 export interface ScheduleRow {
   cadence: Cadence; time_local: string; timezone: string;
@@ -18,6 +18,7 @@ export interface CheckinRow {
   created_at: number; due_at: number; expires_at: number;
   started_at: number | null; closed_at: number | null; token_hash: string | null;
   outcome: string | null; skill_id: string | null; classifier_source: string | null;
+  executor: string | null; action_started_at: number | null; action_ends_at: number | null; action_result: string | null;
 }
 
 export const getSchedule = (db: Db) =>
@@ -55,8 +56,11 @@ export function expireStale(db: Db, now: number) {
   const abandoned = db.prepare(`UPDATE checkins SET status = 'abandoned', closed_at = ?, token_hash = NULL,
       outcome = COALESCE(outcome, 'none')
     WHERE status IN ('in_progress','clarifying','offered') AND started_at <= ?`).run(now, now - timeout);
-  if (Number(expired.changes) || Number(abandoned.changes)) {
-    log("checkins.expired", { expired: Number(expired.changes), abandoned: Number(abandoned.changes) });
+  // A running action that was never closed: it ran, so the check-in completes (grace: 10 min after it ended).
+  const actions = db.prepare(`UPDATE checkins SET status = 'completed', closed_at = ?, token_hash = NULL, action_result = 'timed_out'
+    WHERE status = 'acting' AND COALESCE(action_ends_at, action_started_at) <= ?`).run(now, now - 10 * 60_000);
+  if (Number(expired.changes) || Number(abandoned.changes) || Number(actions.changes)) {
+    log("checkins.expired", { expired: Number(expired.changes), abandoned: Number(abandoned.changes), actions: Number(actions.changes) });
   }
 }
 

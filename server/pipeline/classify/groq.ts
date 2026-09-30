@@ -20,7 +20,7 @@ export function groqClassifier(opts: { apiKey: string; model: string; timeoutMs:
           body: JSON.stringify({
             model: opts.model,
             temperature: 0,
-            max_tokens: 60,
+            max_tokens: 160,
             response_format: { type: "json_object" },
             messages: [
               { role: "system", content: SYSTEM_PROMPT },

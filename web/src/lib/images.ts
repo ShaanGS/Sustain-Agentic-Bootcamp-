@@ -16,7 +16,7 @@ export const IMAGES = {
     file: "skill-prioritize.png", tint: "#E8DCC8", alt: "",
     remote: "https://pikaso.cdnpk.net/private/production/5589625682/render.png?token=exp=1791072000~hmac=482b4adfd4194dafc368c4ea723f7f26a6aaec780f067334482f9f7fd54dca0f",
   },
-  TEN_MINUTE_START: {
+  START_SMALL: {
     file: "skill-ten-minute-start.png", tint: "#ECE3D6", alt: "",
     remote: "https://pikaso.cdnpk.net/private/production/5589626956/render.png?token=exp=1791072000~hmac=9bb9f230a38cb17ff2c5b791dd8662669add45143fb4d8784bc5507e7baeeca2",
   },

@@ -1,11 +1,11 @@
 {
-  "_note": "Policy table. The classifier may only return one of these need ids. The server maps need -> skill; the model never picks the skill.",
+  "_note": "Policy table. The model may only return one of these need ids. The server maps need -> skill -> executor; the model never picks the skill or the action.",
   "needs": [
-    { "id": "too_many_tasks",      "label": "too many things competing",      "clarify_label": "Too many things at once",     "skill_id": "PRIORITIZE" },
-    { "id": "cant_get_started",    "label": "difficulty getting started",     "clarify_label": "Can't get started",           "skill_id": "TEN_MINUTE_START" },
-    { "id": "wound_up",            "label": "feeling wound up or tense",      "clarify_label": "Wound up or tense",           "skill_id": "PACED_BREATHING" },
-    { "id": "feeling_cut_off",     "label": "feeling cut off from people",    "clarify_label": "Feeling cut off",             "skill_id": "REACH_OUT" },
-    { "id": "sleep_or_worn_out",   "label": "sleep or feeling worn out",      "clarify_label": "Tired or not sleeping",       "skill_id": "WIND_DOWN" },
-    { "id": "doing_ok",            "label": "doing okay",                     "clarify_label": "Actually, I'm okay",          "skill_id": "CLOSE_OK" }
+    { "id": "COMPETING_TASKS",     "label": "several tasks competing",       "clarify_label": "Too many things at once",  "skill_id": "PRIORITIZE" },
+    { "id": "DIFFICULTY_STARTING", "label": "difficulty getting started",    "clarify_label": "Can't get started",        "skill_id": "START_SMALL" },
+    { "id": "ACUTE_TENSION",       "label": "wound up or tense right now",   "clarify_label": "Wound up or tense",        "skill_id": "PACED_BREATHING" },
+    { "id": "FEELING_ISOLATED",    "label": "feeling cut off from people",   "clarify_label": "Feeling cut off",          "skill_id": "REACH_OUT" },
+    { "id": "SLEEP_OR_EXHAUSTION", "label": "tired or not sleeping",         "clarify_label": "Tired or not sleeping",    "skill_id": "WIND_DOWN" },
+    { "id": "DOING_OK",            "label": "doing okay",                    "clarify_label": "Actually, I'm okay",       "skill_id": "CLOSE_OK" }
   ]
 }
