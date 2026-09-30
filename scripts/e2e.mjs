@@ -83,7 +83,9 @@ try {
   // 4. Ordinary path #2 via "Check in now" (same creation path as the scheduler)
   await page.getByRole("button", { name: "Check in now" }).click();
   await begin();
-  await answer(LINES.ordinary2);
+  await page.locator("#response").fill(LINES.ordinary2);
+  await page.locator("#response").press("Enter"); // Enter submits
+
   await expectText("Paced breathing");
   await shot("08-result-breathing");
   await finish();

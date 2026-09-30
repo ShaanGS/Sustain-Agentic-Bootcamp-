@@ -64,8 +64,11 @@ export function PromptPanel({ start, submitting, error, initialText, onSubmit, o
             <label className="sr-only" htmlFor="response">Your answer</label>
             <textarea id="response" ref={ref} value={text} maxLength={start.max_chars} placeholder="A sentence or two is enough."
               autoComplete="off" onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
-            <div className="answer-foot"><span>{start.prompt_hint}</span><span className="tnum">{text.length}/{start.max_chars}</span></div>
+              onKeyDown={(e) => {
+                // Enter submits; Shift+Enter adds a new line. Ignore Enter while an IME is composing text.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
+              }} />
+            <div className="answer-foot"><span>{start.prompt_hint}</span><span className="tnum">Enter to submit · Shift+Enter for a new line · {text.length}/{start.max_chars}</span></div>
           </div>
         </div>
       )}
