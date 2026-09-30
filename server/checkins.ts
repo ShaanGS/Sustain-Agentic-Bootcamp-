@@ -2,7 +2,7 @@
 //
 //   OBSERVE → SAFETY → UNDERSTAND → DECIDE → ACT → END
 //
-//   ready --start--> in_progress --respond--> offered | clarifying | help_shown
+//   ready --start--> in_progress --respond--> offered | clarifying | help_shown | in_progress (not a check-in: asked again)
 //   clarifying --clarify (re-checks the ORIGINAL response's safety)--> offered | help_shown
 //   offered --act--> acting            (the one allowlisted executor runs; idempotent)
 //   offered | clarifying | acting --close--> completed
@@ -14,6 +14,7 @@ import { expireStale, type CheckinRow } from "./scheduler.js";
 import { crisisPhraseMatch } from "./pipeline/crisisPhrase.js";
 import { decide, skillForNeed, type Action, type Decision } from "./pipeline/policy.js";
 import { EMPTY_CONTEXT } from "./pipeline/classify/schema.js";
+import { localDanger, notACheckin } from "./pipeline/classify/local.js";
 import type { Classifier, ClassifyResult } from "./pipeline/classify/types.js";
 import { recordRun, updateRun, type TraceStep } from "./demoLog.js";
 import { seal, unseal } from "./seal.js";
@@ -97,17 +98,19 @@ const actLabel = (a: Action) =>
     : a.executor === "COPY_MESSAGE" ? "Message ready to copy"
     : "Check-in noted";
 
-const outcomeCode = (d: Decision) => (d.action === "skill" ? `skill:${d.skill.id}` : d.action);
+const outcomeCode = (d: Decision) => (d.action === "skill" ? `skill:${d.skill.id}` : d.action === "scope" ? "off_topic" : d.action);
 
 function decideStep(d: Decision, ms: number): TraceStep {
   if (d.action === "help") return { step: "decide", status: "hit", label: "HUMAN_HELP", detail: `policy: ${d.reason} → verified human-help route`, ms };
   if (d.action === "skill") return { step: "decide", status: "pass", label: d.skill.id, detail: `needs table: ${d.need_id} → ${d.skill.id} → ${d.act.executor}`, ms };
+  if (d.action === "scope") return { step: "decide", status: "hit", label: "OUT_OF_SCOPE", detail: "not a check-in → no action, no tools; the question is asked again", ms };
   return { step: "decide", status: "pass", label: "CLARIFY", detail: "one tap-to-choose question (no free text)", ms };
 }
 
 function actStep(d: Decision): TraceStep {
   if (d.action === "help") return { step: "act", status: "pass", label: "Verified support route", detail: "static helpline config shown; no skill; Still contacted no one" };
   if (d.action === "skill") return { step: "act", status: "pending", label: actLabel(d.act), detail: `${d.act.executor} ready — waiting for the student` };
+  if (d.action === "scope") return { step: "act", status: "skipped", label: "Nothing run", detail: "Still has no code, system or database tools — only 5 check-in executors" };
   return { step: "act", status: "skipped", label: "Waiting", detail: "no action until the student chooses" };
 }
 
@@ -138,6 +141,11 @@ async function apply(db: Store, row: CheckinRow, d: Decision, source: string, no
       status: "offered",
     };
   }
+  if (d.action === "scope") {
+    // Nothing changes: the check-in stays in_progress so the student can answer the real question.
+    log("checkin.off_topic", { id: row.id, source });
+    return { route: "scope" as const, status: "in_progress" };
+  }
   await db.run(`UPDATE checkins SET status = 'clarifying', classifier_source = ? WHERE id = ?`, [source, row.id]);
   log("checkin.clarifying", { id: row.id, reason: d.reason });
   return { route: "clarify" as const, reason: d.reason, options: d.options, status: "clarifying" };
@@ -165,7 +173,16 @@ export async function respond(db: Store, classifier: Classifier, id: string, tok
   const explicit = crisisPhraseMatch(text);
   const phraseMs = elapsed(t);
   let result: ClassifyResult | null = null;
-  if (explicit) {
+  let early: Decision | null = null; // decided by a local layer — the model is never called
+  if (!explicit && localDanger(text)) {
+    early = { action: "help", reason: "safety_layer", kind: "support" };
+    steps.push({ step: "safety", status: "hit", label: "HIGH_RISK · safety layer", detail: "possible danger (not an explicit phrase) · local, no network", ms: phraseMs });
+    steps.push({ step: "model", status: "skipped", label: "Not called", detail: "safety layer matched — the model never sees this response" });
+  } else if (!explicit && notACheckin(text)) {
+    early = { action: "scope" };
+    steps.push({ step: "safety", status: "pass", label: "Clear", detail: "no explicit phrase · safety layer clear", ms: phraseMs });
+    steps.push({ step: "model", status: "skipped", label: "Not called", detail: "scope guard: asks for code or system changes — not a check-in" });
+  } else if (explicit) {
     steps.push({ step: "safety", status: "hit", label: "HIGH_RISK · explicit phrase", detail: `reviewed ${explicit === "emergency" ? "emergency" : "self-harm"} phrase matched`, ms: phraseMs });
     steps.push({ step: "model", status: "skipped", label: "Not called", detail: "explicit backstop matched — the model never sees this response" });
   } else {
@@ -178,24 +195,26 @@ export async function respond(db: Store, classifier: Classifier, id: string, tok
     steps.push({
       step: "model", status: !result.ok ? "fail" : result.risk === "HIGH_RISK" ? "hit" : "pass", ms,
       label: result.ok ? `${classifier.info.provider} · ${result.risk}` : `${classifier.info.provider} unavailable`,
-      detail: result.ok ? `${classifier.info.provider}/${classifier.info.model} · output passed schema + allowlist`
+      detail: result.ok ? `${classifier.info.provider}/${result.model ?? classifier.info.model} · output passed schema + allowlist`
         : `${result.reason} → treated as UNCERTAIN, never SAFE`,
     });
   }
 
   t = mark();
-  const decision = decide(explicit, result);
+  const decision = early ?? decide(explicit, result);
   const decideMs = elapsed(t);
   steps.push(decision.action === "skill"
     ? { step: "understand", status: "pass", label: decision.understood, detail: `need ${decision.need_id}${decision.context.situation ? " · context extracted (display only, not stored)" : ""}` }
-    : { step: "understand", status: "skipped", label: decision.action === "help" ? "Not needed" : "Unclear", detail: decision.action === "help" ? "ordinary flow stopped" : "no single safe need — ask one question" });
+    : decision.action === "scope"
+      ? { step: "understand", status: "hit", label: "Not a check-in", detail: "the message asks Still to do something outside a wellbeing check-in" }
+      : { step: "understand", status: "skipped", label: decision.action === "help" ? "Not needed" : "Unclear", detail: decision.action === "help" ? "ordinary flow stopped" : "no single safe need — ask one question" });
   steps.push(decideStep(decision, decideMs));
   steps.push(actStep(decision));
   if (decision.action === "help") steps.push({ step: "end", status: "pass", label: "Check-in closed", detail: "terminal · no skill · no clarification" });
 
   // A student may have closed or timed out while the model ran.
   const fresh = await authorize(db, id, token, now(), ["in_progress"]);
-  const source = explicit ? "phrase" : result?.ok ? result.source : "failed";
+  const source = explicit ? "phrase" : early ? "local" : result?.ok ? result.source : "failed";
   const payload = await apply(db, fresh, decision, source, now());
   // One clarification: the original response is sealed (encrypted) and handed back for the browser to
   // hold in memory, so the clarification can re-check it without Still storing it anywhere.
@@ -225,9 +244,10 @@ export async function clarify(db: Store, classifier: Classifier, id: string, tok
   let t = mark();
   const explicit: CrisisCategory | null = crisisPhraseMatch(held.text);
   let recheck: ClassifyResult | null = null;
-  if (!explicit) recheck = await classifier.classify(held.text);
+  const danger = !explicit && localDanger(held.text);
+  if (!explicit && !danger) recheck = await classifier.classify(held.text);
   const recheckMs = elapsed(t);
-  const highRisk = !!explicit || held.risk === "HIGH_RISK" || (recheck?.ok === true && recheck.risk === "HIGH_RISK");
+  const highRisk = !!explicit || danger || held.risk === "HIGH_RISK" || (recheck?.ok === true && recheck.risk === "HIGH_RISK");
 
   let decision: Decision;
   if (highRisk) decision = { action: "help", reason: "recheck_high_risk", kind: explicit === "emergency" ? "emergency" : "support" };
@@ -237,7 +257,7 @@ export async function clarify(db: Store, classifier: Classifier, id: string, tok
   t = mark();
   const steps: TraceStep[] = [
     { step: "safety", status: highRisk ? "hit" : "pass", label: highRisk ? "HIGH_RISK · re-check" : "Re-checked · clear", ms: recheckMs,
-      detail: `original response re-checked before using the choice${explicit ? " · explicit phrase" : recheck?.ok ? ` · model ${recheck.risk}` : " · model unavailable"}` },
+      detail: `original response re-checked before using the choice${explicit ? " · explicit phrase" : danger ? " · safety layer" : recheck?.ok ? ` · model ${recheck.risk}` : " · model unavailable"}` },
     decision.action === "skill"
       ? { step: "understand", status: "pass", label: `Chosen: ${decision.understood}`, detail: `student picked ${decision.need_id}` }
       : { step: "understand", status: "skipped", label: highRisk ? "Choice ignored" : "Asked for a person", detail: highRisk ? "a benign choice cannot downgrade a high-risk response" : "student chose human support" },

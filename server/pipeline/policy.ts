@@ -18,11 +18,12 @@ export interface Action {
   cues?: string[];                               // GUIDED_RESET only
 }
 
-export type HelpReason = "explicit_phrase" | "model_high_risk" | "recheck_high_risk" | "student_asked_for_person";
+export type HelpReason = "explicit_phrase" | "safety_layer" | "model_high_risk" | "recheck_high_risk" | "student_asked_for_person";
 export type Decision =
   | { action: "help"; reason: HelpReason; kind: "emergency" | "support" }
   | { action: "skill"; need_id: string; understood: string; skill: Skill; act: Action; context: Context }
-  | { action: "clarify"; reason: "uncertain" | "classifier_failed"; options: { need_id: string; label: string }[] };
+  | { action: "clarify"; reason: "uncertain" | "classifier_failed"; options: { need_id: string; label: string }[] }
+  | { action: "scope" }; // not a check-in: Still takes no action and asks the question again
 
 export const clarifyOptions = () => needs.map((n) => ({ need_id: n.id, label: n.clarify_label }));
 
@@ -54,6 +55,7 @@ export function decide(explicit: CrisisCategory | null, result: ClassifyResult |
   if (explicit) return { action: "help", reason: "explicit_phrase", kind: explicit === "emergency" ? "emergency" : "support" };
   if (!result || !result.ok) return { action: "clarify", reason: "classifier_failed", options: clarifyOptions() };
   if (result.risk === "HIGH_RISK") return { action: "help", reason: "model_high_risk", kind: "support" };
+  if (result.risk === "OFF_TOPIC") return { action: "scope" };
   if (result.risk === "SAFE" && result.need_id) return skillForNeed(result.need_id, result.context);
   return { action: "clarify", reason: "uncertain", options: clarifyOptions() };
 }

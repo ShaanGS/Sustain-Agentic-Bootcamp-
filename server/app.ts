@@ -100,16 +100,27 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000, ti
   app.post("/api/checkins/:id/resume", route(async (req, res) => { res.json(await resumeCheckin(db, id(req), clock())); }));
   app.post("/api/checkins/:id/end", route(async (req, res) => { res.json(await endCheckin(db, id(req), clock())); }));
 
+  // Health probe: one FIXED, non-personal sentence through the live classifier (cached 60 s). No student text.
+  let probe: { at: number; body: unknown } | null = null;
+  app.get("/api/health/classifier", route(async (_req, res) => {
+    if (!probe || clock() - probe.at > 60_000) {
+      const r = await classifier.classify("I have three assignments due this week and keep jumping between them.");
+      probe = { at: clock(), body: { provider: classifier.info.provider, model_used: r.model ?? classifier.info.model, ok: r.ok,
+        risk: r.ok ? r.risk : null, need_id: r.ok ? r.need_id : null, reason: r.ok ? null : r.reason, ms: Math.round(r.ms) } };
+    }
+    res.json(probe.body);
+  }));
+
   app.get("/api/protocol", route(async (_req, res) => {
     const runs = await recentRuns(db);
     res.json({
       pipeline: [
         { step: "trigger", text: "A check-in is created by the server scheduler at the student's chosen time (or by “Check in now”, the same path)." },
         { step: "observe", text: "One short response. The session token must be valid. The text is held in memory only — never stored or logged." },
-        { step: "safety", text: `Explicit backstop first: ${crisisPhraseCount} reviewed self-harm and emergency phrases, local, no network. A hit ends the ordinary flow before any model call.` },
-        { step: "model", text: "Otherwise one model call assesses risk first (SAFE / HIGH_RISK / UNCERTAIN), then one need and short context. Timeout, error or invalid output becomes UNCERTAIN — never SAFE." },
+        { step: "safety", text: `Explicit backstop first: ${crisisPhraseCount} reviewed self-harm and emergency phrases, local, no network. A hit ends the ordinary flow before any model call. Then an always-on local safety layer (poisoning, overdose, weapons, not feeling safe) — also before the model, whichever provider is active.` },
+        { step: "model", text: "Otherwise one model call assesses risk first (SAFE / HIGH_RISK / UNCERTAIN / OFF_TOPIC), then one need and short context. Timeout, error or invalid output becomes UNCERTAIN — never SAFE. Requests for code or system changes are caught by a scope guard and never reach a tool." },
         { step: "understand", text: "The need comes from a fixed list. Context (e.g. “three assignments due Friday”) is display-only, length-limited and never stored." },
-        { step: "decide", text: "A server table decides: HIGH_RISK → human help; SAFE → the one skill mapped to that need; UNCERTAIN → one tap-to-choose question, after which the original response is re-checked." },
+        { step: "decide", text: "A server table decides: HIGH_RISK → human help; SAFE → the one skill mapped to that need; OFF_TOPIC → no action, the question is asked again; UNCERTAIN → one tap-to-choose question, after which the original response is re-checked." },
         { step: "act", text: "The skill runs one allowlisted executor — focus timer, guided breathing, guided reset, copy a message, or acknowledge. Duration and limits are server-controlled. No network, messaging, files or other tools." },
         { step: "end", text: "The check-in closes. Still does not continue the conversation." },
       ],

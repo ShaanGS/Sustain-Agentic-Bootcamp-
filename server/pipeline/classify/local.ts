@@ -19,6 +19,20 @@ const DANGER: RegExp[] = [
   /\b(hitting|hits|beats|beating|hurting) me\b/,
 ];
 
+/** Always-on safety layer: runs before any model, whichever provider is active. */
+export const localDanger = (text: string) => DANGER.some((re) => re.test(normalise(text)));
+
+// Not a check-in at all: asks Still to write or run code, change systems, or follow new instructions.
+// Checked only after every safety layer is clear, so danger always wins. The model can also say OFF_TOPIC.
+const NOT_A_CHECKIN: RegExp[] = [
+  /\b(write|run|add|execute|create|build)\b.*\b(code|script|program|query|app)\b/,
+  /\b(python|javascript|sql|bash)\b/,
+  /\bignore\b.*\b(instructions|rules|prompt)\b/,
+  /\bsystem prompt\b/,
+  /\b(server|database|system)\b.*\b(access|change|delete|modify|break|take over|inject)\w*\b/,
+];
+export const notACheckin = (text: string) => NOT_A_CHECKIN.some((re) => re.test(normalise(text)));
+
 // Distress language that is not a clear danger: never SAFE.
 const CONCERNING = [
   "hopeless", "worthless", "empty inside", "give up on everything", "disappear", "no point",
@@ -80,6 +94,7 @@ export function localRules(text: string): { risk: string; need_id: string | null
   const n = normalise(text);
   if (DANGER.some((re) => re.test(n))) return { risk: "HIGH_RISK", need_id: null };
   if (CONCERNING.some((k) => n.includes(k))) return { risk: "UNCERTAIN", need_id: null };
+  if (NOT_A_CHECKIN.some((re) => re.test(n))) return { risk: "OFF_TOPIC", need_id: null };
   let scores = Object.entries(RULES)
     .map(([need, keys]) => [need, keys.filter((k) => n.includes(k)).length] as const)
     .filter(([, s]) => s > 0)

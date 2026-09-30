@@ -85,10 +85,10 @@ export function readEnv(e: NodeJS.ProcessEnv = process.env): Env {
   return {
     provider: provider as ProviderName,
     groqApiKey: e.GROQ_API_KEY ?? "",
-    groqModel: e.GROQ_MODEL || "llama-3.1-8b-instant",
+    groqModel: e.GROQ_MODEL || "openai/gpt-oss-20b",
     ollamaUrl: e.OLLAMA_URL || "http://localhost:11434",
     ollamaModel: e.OLLAMA_MODEL || "llama3.2:3b",
-    classifierTimeoutMs: Number(e.CLASSIFIER_TIMEOUT_MS) || 6000,
+    classifierTimeoutMs: Number(e.CLASSIFIER_TIMEOUT_MS) || 8000,
     port: Number(e.PORT) || 8787,
     dbPath: e.STILL_DB_PATH || (e.VERCEL ? "/tmp/still.db" : join(root, "data", "still.db")),
     databaseUrl: e.DATABASE_URL || e.POSTGRES_URL || undefined,

@@ -18,7 +18,7 @@ type HelpR = Extract<RouteResult, { route: "help" }>;
 /** Client view of the server state machine. Each variant is entered only from a real API response. */
 type Flow =
   | { kind: "home" }
-  | { kind: "prompt"; id: string; start: StartResult; submitting: boolean; error: string | null }
+  | { kind: "prompt"; id: string; start: StartResult; submitting: boolean; error: string | null; scope?: boolean }
   | { kind: "result"; id: string; token: string; result: Skill; via: "classifier" | "clarify"; closing: boolean; run: RunState }
   | { kind: "clarify"; id: string; token: string; result: Clar; busy: boolean }
   | { kind: "help"; result: HelpR }
@@ -112,13 +112,18 @@ export function App() {
     pendingText.current = "";
     if (r.route === "help") { clearSession(); setFlow({ kind: "help", result: r }); }
     else if (r.route === "skill") setFlow({ kind: "result", id, token, result: r, via, closing: false, run: { phase: "idle" } });
+    else if (r.route === "scope") {
+      // Not a check-in: Still took no action. Same check-in, same question, empty answer box.
+      pendingText.current = "";
+      setFlow((f) => (f.kind === "prompt" ? { ...f, submitting: false, error: null, scope: true } : f));
+    }
     else setFlow({ kind: "clarify", id, token, result: r, busy: false });
   };
   const submit = async (text: string) => {
     if (flow.kind !== "prompt") return;
     const { id, start } = flow;
     pendingText.current = text;
-    setFlow({ ...flow, submitting: true, error: null });
+    setFlow({ ...flow, submitting: true, error: null, scope: false });
     try {
       routeTo(id, start.token, await api.respond(id, start.token, text), "classifier");
     } catch (e) {
@@ -197,7 +202,7 @@ export function App() {
     main = <HelpTab helplines={state.helplines} />;
   } else if (flow.kind === "prompt") {
     focus = true;
-    main = <PromptPanel start={flow.start} submitting={flow.submitting} error={flow.error} initialText={pendingText.current} onSubmit={submit} onLeave={leave} />;
+    main = <PromptPanel start={flow.start} submitting={flow.submitting} error={flow.error} scope={!!flow.scope} initialText={pendingText.current} onSubmit={submit} onLeave={leave} />;
   } else if (flow.kind === "result") {
     focus = true;
     main = <ResultPanel result={flow.result} classifier={state.classifier} via={flow.via} run={flow.run} closing={flow.closing}

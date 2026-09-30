@@ -445,3 +445,7 @@ button { cursor: pointer; }
   .runner { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .runner-actions { justify-content: center; }
 }
+
+/* Not a check-in: Still understood the request and declined it (no action taken). */
+.scope-note { display: flex; flex-direction: column; gap: 4px; background: #EFEAFE; color: #2A1A66; border-radius: var(--r-md); padding: 14px 16px; font-size: var(--fs-14); line-height: 1.45; margin: 0; }
+.scope-note b { font-weight: 700; }

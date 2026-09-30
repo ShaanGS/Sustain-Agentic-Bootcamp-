@@ -191,3 +191,40 @@ describe("model providers fail closed", () => {
     expect(await c.classify("x")).toMatchObject({ ok: false, reason: "network_error", source: "ollama" });
   });
 });
+
+describe("groq model fallback", () => {
+  const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+  it("a retired model (404) falls through to the next model, and the model used is reported", async () => {
+    const seen: string[] = [];
+    const f = vi.fn(async (_u: string, init: any) => {
+      const body = JSON.parse(init.body); seen.push(body.model);
+      return body.model === "gone-model" ? new Response("no", { status: 404 })
+        : reply('{"risk":"SAFE","need_id":"COMPETING_TASKS","context":null}');
+    });
+    const c = groqClassifier({ apiKey: "k", model: "gone-model", timeoutMs: 2000, fetchImpl: f as any });
+    const r = await c.classify("three assignments");
+    expect(r.ok).toBe(true);
+    expect(r.model).toBe("openai/gpt-oss-20b");
+    expect(seen).toEqual(["gone-model", "openai/gpt-oss-20b"]);
+  });
+  it("a 400 retries the same model without JSON mode / options before moving on", async () => {
+    const bodies: any[] = [];
+    const f = vi.fn(async (_u: string, init: any) => {
+      const body = JSON.parse(init.body); bodies.push(body);
+      return body.response_format ? new Response("bad", { status: 400 }) : reply('<think>x</think>{"risk":"UNCERTAIN","need_id":null,"context":null}');
+    });
+    const c = groqClassifier({ apiKey: "k", model: "openai/gpt-oss-20b", timeoutMs: 2000, fetchImpl: f as any });
+    const r = await c.classify("hmm");
+    expect(r.ok && r.risk).toBe("UNCERTAIN");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].reasoning_effort).toBe("low");
+    expect(bodies[1].response_format).toBeUndefined();
+  });
+  it("401 (bad key) does not retry other models", async () => {
+    const f = vi.fn(async () => new Response("no", { status: 401 }));
+    const c = groqClassifier({ apiKey: "k", model: "m", timeoutMs: 2000, fetchImpl: f as any });
+    const r = await c.classify("x");
+    expect(r.ok).toBe(false);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});

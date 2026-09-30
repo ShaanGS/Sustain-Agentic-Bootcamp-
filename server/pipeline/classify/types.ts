@@ -14,7 +14,7 @@ export interface ClassifierInfo {
  * ms: time spent getting a label (model call or rules), excluding validation.
  * validate_ms: time spent validating the label; absent if validation never ran (e.g. timeout).
  */
-export type ClassifyResult = { source: ClassifierSource; ms: number; validate_ms?: number } & Validated;
+export type ClassifyResult = { source: ClassifierSource; ms: number; validate_ms?: number; model?: string } & Validated;
 
 export interface Classifier {
   info: ClassifierInfo;

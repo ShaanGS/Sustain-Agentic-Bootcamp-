@@ -37,11 +37,12 @@ function PanelHead({ title, onLeave }: { title: string; onLeave?: () => void }) 
 const enter = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, ease: [0.2, 0, 0, 1] as const } };
 
 /* ---------------- prompt + in-flight ---------------- */
-export function PromptPanel({ start, submitting, error, initialText, onSubmit, onLeave }: {
-  start: StartResult; submitting: boolean; error: string | null; initialText: string;
+export function PromptPanel({ start, submitting, error, scope, initialText, onSubmit, onLeave }: {
+  start: StartResult; submitting: boolean; error: string | null; scope: boolean; initialText: string;
   onSubmit: (text: string) => void; onLeave: () => void;
 }) {
   const [text, setText] = useState(initialText);
+  useEffect(() => { if (scope) setText(""); }, [scope]);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
   const submit = () => { if (text.trim() && !submitting) onSubmit(text); };
@@ -74,6 +75,12 @@ export function PromptPanel({ start, submitting, error, initialText, onSubmit, o
         </div>
       )}
       {error && <p className="error" role="alert">{error}</p>}
+      {scope && (
+        <div className="scope-note" role="status">
+          <b>That's not something Still does.</b>
+          <span>Still read your message as a request to build or change something, not a check-in — so it took no action. It has no code, system or database tools, only five small check-in actions. Tell it how you're actually doing, or close.</span>
+        </div>
+      )}
       <Button block onClick={submit} disabled={submitting || !text.trim()}>{submitting ? "Checking…" : "Submit"}</Button>
     </motion.section>
   );

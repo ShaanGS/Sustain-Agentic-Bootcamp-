@@ -147,7 +147,7 @@ other phrasings but can also be wrong. That is why every uncertain or failed pat
 | `CLASSIFIER_PROVIDER` | Where the response text goes | Notes |
 | --- | --- | --- |
 | `local` (default) | Stays in-process | Deterministic keyword rules. Anything unclear becomes UNCERTAIN. |
-| `groq` | Sent to `api.groq.com` for labelling | Free tier, `llama-3.1-8b-instant`. Groq's data policy applies. Without a key, every response goes to clarification. |
+| `groq` | Sent to `api.groq.com` for labelling | Free tier, `openai/gpt-oss-20b` (falls back to `gpt-oss-120b`, then `qwen3-32b`, if Groq retires or rejects a model). Groq's data policy applies. Without a key, every response goes to clarification. |
 | `ollama` | Stays on the laptop | Free and local. Needs `ollama pull llama3.2:3b` first. |
 
 Compare providers with `npm run eval -- --provider groq`.

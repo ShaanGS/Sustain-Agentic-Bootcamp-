@@ -3,7 +3,7 @@ import { z } from "zod";
 import { NEED_IDS } from "../../config.js";
 import { crisisPhraseHit } from "../crisisPhrase.js";
 
-export const Risk = z.enum(["SAFE", "HIGH_RISK", "UNCERTAIN"]);
+export const Risk = z.enum(["SAFE", "HIGH_RISK", "UNCERTAIN", "OFF_TOPIC"]);
 export type Risk = z.infer<typeof Risk>;
 
 /**
@@ -26,7 +26,7 @@ const Raw = z.object({
 
 export type Validated =
   | { ok: true; risk: "SAFE"; need_id: string; context: Context }
-  | { ok: true; risk: "UNCERTAIN" | "HIGH_RISK"; need_id: null; context: Context }
+  | { ok: true; risk: "UNCERTAIN" | "HIGH_RISK" | "OFF_TOPIC"; need_id: null; context: Context }
   | { ok: false; reason: string };
 
 export const EMPTY_CONTEXT: Context = { situation: null, focus_target: null, deadline: null };
@@ -64,6 +64,13 @@ export function validateClassifierOutput(raw: unknown): Validated {
 
 /** Parses model text that should be a single JSON object. */
 export function parseJsonObject(text: string): unknown {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
-  return JSON.parse(trimmed);
+  // Reasoning models may prepend <think>…</think> or wrap the object in prose or fences.
+  const trimmed = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const a = trimmed.indexOf("{"), b = trimmed.lastIndexOf("}");
+    if (a >= 0 && b > a) return JSON.parse(trimmed.slice(a, b + 1));
+    throw new Error("no_json");
+  }
 }

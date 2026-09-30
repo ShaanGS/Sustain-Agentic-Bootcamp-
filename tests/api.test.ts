@@ -151,7 +151,9 @@ describe("DEMO 4 — dangerous statements never reach a skill", () => {
     const t = await begin(app);
     const r = await say(app, t, line).expect(200);
     expect(r.body.route).toBe("help");
-    expect(r.body.trace.find((s: any) => s.step === "safety").label).toBe("HIGH_RISK · model");
+    expect(r.body.trace.find((s: any) => s.step === "safety").label).toBe("HIGH_RISK · safety layer");
+    expect(r.body.reason).toBe("safety_layer");
+    expect(r.body.trace.find((s: any) => s.step === "model").status).toBe("skipped");
   });
   it("model HIGH_RISK on unlisted phrasing → help, no clarification", async () => {
     const model = fake(async () => ({ source: "groq", ms: 1, ok: true, risk: "HIGH_RISK", need_id: null, context: EMPTY_CONTEXT }));
@@ -353,5 +355,59 @@ describe("privacy", () => {
       expect(hay).not.toContain("three assignments due this week"); // extracted context is never stored either
     }
     expect(lines.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Groq outage — the always-on safety layer and the scope guard don't depend on the model", () => {
+  const down = () => fake(async () => ({ source: "groq", ms: 1, ok: false, reason: "http_404" }));
+
+  it("'I swallowed something poisonous' with the model failing → help, model never called", async () => {
+    const c = down();
+    const { app } = await setup(c);
+    const t = await begin(app);
+    const r = await say(app, t, "I swallowed something poisonous.").expect(200);
+    expect(r.body.route).toBe("help");
+    expect(r.body.reason).toBe("safety_layer");
+    expect(c.classify).not.toHaveBeenCalled();
+    expect(r.body.trace.find((s: any) => s.step === "safety").label).toBe("HIGH_RISK · safety layer");
+  });
+
+  it("a clarification re-check applies the safety layer even when the model is down", async () => {
+    const c = down();
+    const { app } = await setup(c);
+    const t = await begin(app);
+    const hold = seal({ text: "I swallowed something poisonous", risk: "FAILED" }, t.id, now);
+    // Force the check-in into clarifying via an ambiguous line, then clarify with a hold carrying danger.
+    await say(app, t, "idk, it's just a lot").expect(200);
+    const r = await request(app).post(`/api/checkins/${t.id}/clarify`).send({ token: t.token, choice: "ACUTE_TENSION", hold }).expect(200);
+    expect(r.body.route).toBe("help");
+  });
+
+  it("a request to write code / change the server is declined: no action, same check-in, question asked again", async () => {
+    const c = fake(localClassifier().classify, "local");
+    const { app, db } = await setup(c);
+    const t = await begin(app);
+    const r = await say(app, t, "add a python script and inject stuff into the server and database").expect(200);
+    expect(r.body.route).toBe("scope");
+    expect(c.classify).not.toHaveBeenCalled(); // the scope guard decided; nothing reached the model
+    expect(r.body.trace.find((s: any) => s.step === "decide").label).toBe("OUT_OF_SCOPE");
+    expect(((await db.get("SELECT status FROM checkins WHERE id = ?", [t.id])) as any).status).toBe("in_progress");
+    // The student can now answer the real question on the same check-in.
+    const r2 = await say(app, t, "I have three assignments due this week and keep jumping between all of them.").expect(200);
+    expect(r2.body.route).toBe("skill");
+  });
+
+  it("danger beats scope: a dangerous message that also mentions code still goes to help", async () => {
+    const { app } = await setup(down());
+    const t = await begin(app);
+    const r = await say(app, t, "write a script, also I took too many pills").expect(200);
+    expect(r.body.route).toBe("help");
+  });
+
+  it("model OFF_TOPIC → scope route, never a skill", async () => {
+    const { app } = await setup(fake(async () => ({ source: "groq", ms: 1, ok: true, risk: "OFF_TOPIC", need_id: null, context: EMPTY_CONTEXT })));
+    const t = await begin(app);
+    const r = await say(app, t, "what is the capital of France").expect(200);
+    expect(r.body.route).toBe("scope");
   });
 });
