@@ -19,8 +19,18 @@ export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onRe
   const s = state.schedule;
   const open = state.open_checkin;
 
+  const session = open ? loadSession() : null;
+  const mine = !!open && session?.id === open.id;
+  // An unanswered check-in (ready, or started earlier / in another tab) always looks the same:
+  // the green card. Begin starts it, or picks it back up with a fresh session.
+  const unanswered = open && (open.status === "ready" || open.status === "in_progress");
+  // Answered but not closed (e.g. the tab was closed on the result): close it quietly from here.
+  const answeredOpen = open && (open.status === "offered" || open.status === "clarifying");
+
   // ---- ready: the green card (ref 4) ----
-  if (open?.status === "ready") {
+  if (unanswered) {
+    const begin = open.status === "ready" ? () => onBegin(open.id) : mine ? onResume : () => onTakeOver(open.id);
+    const later = open.status === "ready" ? () => onSkip(open.id) : () => onEnd(open.id);
     return (
       <section className="today">
         <motion.h1 className="hero" {...rise}>
@@ -38,47 +48,11 @@ export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onRe
             <span className="where"><Clock3 size={15} /> about a minute</span>
             <div className="ready-rule" />
             <div className="bullets"><span>One question</span><span>One step</span><span>Then it ends</span></div>
-            <Button onClick={() => onBegin(open.id)} disabled={busy} style={{ marginTop: 8 }}>Begin check&#8209;in</Button>
+            <Button onClick={begin} disabled={busy} style={{ marginTop: 8 }}>Begin check&#8209;in</Button>
           </div>
         </motion.div>
-        <button className="link-btn" onClick={() => onSkip(open.id)} disabled={busy}>Skip this one</button>
+        <button className="link-btn" onClick={later} disabled={busy}>Skip this one</button>
         {notice && <p className="notice" role="status">{notice}</p>}
-      </section>
-    );
-  }
-
-  // ---- a check-in is already open ----
-  if (open) {
-    const session = loadSession();
-    const mine = session?.id === open.id;
-    return (
-      <section className="today">
-        <motion.h1 className="hero" {...rise}>
-          <span className="hero-line">Check&#8209;in</span>
-          <span className="hero-line"><span className="mark">in progress</span></span>
-        </motion.h1>
-        {mine ? (
-          open.status === "in_progress"
-            ? <Button onClick={onResume}>Continue check&#8209;in</Button>
-            : <Button onClick={onFinish}>Finish check&#8209;in</Button>
-        ) : open.status === "in_progress" ? (
-          <>
-            <p className="lead" style={{ textAlign: "center", maxWidth: 560 }}>
-              It was started in another tab or window. Continue it here, or end it. Otherwise it closes on its own at {clock(open.closes_at)}.
-            </p>
-            <div className="today-actions">
-              <Button onClick={() => onTakeOver(open.id)} disabled={busy}>Continue here</Button>
-              <button className="btn btn-soft" onClick={() => onEnd(open.id)} disabled={busy}>End it</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="lead" style={{ textAlign: "center", maxWidth: 560 }}>
-              It was already answered in another tab or window. Close it here to finish.
-            </p>
-            <Button onClick={() => onEnd(open.id)} disabled={busy}>Close check&#8209;in</Button>
-          </>
-        )}
       </section>
     );
   }
@@ -141,6 +115,12 @@ export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onRe
         <a className="btn btn-soft" href={TAB_HREF.schedule}>Edit schedule</a>
       </div>
       <p className="fine">A due check&#8209;in appears here and in the menu. Still doesn't send notifications.</p>
+      {answeredOpen && (
+        <p className="notice" role="status">
+          Your last check&#8209;in is still open.{" "}
+          <button className="link-btn" onClick={() => (mine ? onFinish() : onEnd(open.id))} disabled={busy}>Close it</button>
+        </p>
+      )}
       {notice && <p className="notice" role="status">{notice}</p>}
     </section>
   );

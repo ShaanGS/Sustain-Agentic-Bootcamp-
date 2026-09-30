@@ -110,10 +110,10 @@ try {
   await expectText("What's taking up the most space");
   const tab2 = await ctx.newPage();
   await tab2.goto(BASE);
-  await tab2.getByText("another tab or window").first().waitFor();
+  await tab2.getByText("Daily check").first().waitFor(); // same green card as a fresh check-in
   await tab2.waitForTimeout(400);
   await tab2.screenshot({ path: join(SHOTS, "09b-other-tab.png") });
-  await tab2.getByRole("button", { name: "Continue here" }).click();
+  await tab2.getByRole("button", { name: /Begin check/ }).click();
   await tab2.locator("#response").fill(LINES.ordinary1);
   await tab2.getByRole("button", { name: "Submit" }).click();
   await tab2.getByText("One next step").first().waitFor();
