@@ -52,6 +52,45 @@ export function startCheckin(db: Db, id: string, now: number) {
   };
 }
 
+/**
+ * Session tokens live in one browser tab. If the student opens Still in another tab, they can
+ * take over an unanswered check-in here: a fresh token replaces the old one (the old tab's
+ * token stops working) and the 15-minute window restarts. Only before any response was given.
+ */
+export function resumeCheckin(db: Db, id: string, now: number) {
+  expireStale(db, now);
+  const row = getRow(db, id);
+  if (!row) throw new HttpError(404, "checkin_not_found");
+  if (row.status !== "in_progress") throw new HttpError(409, `invalid_state:${row.status}`);
+  const token = randomBytes(24).toString("base64url");
+  db.prepare(`UPDATE checkins SET started_at = ?, token_hash = ? WHERE id = ? AND status = 'in_progress'`)
+    .run(now, sha256(token), id);
+  log("checkin.resumed", { id });
+  return {
+    token,
+    prompt: checkinConfig.prompt,
+    prompt_hint: checkinConfig.prompt_hint,
+    max_chars: checkinConfig.max_chars,
+    expires_at: now + checkinConfig.in_progress_timeout_minutes * 60_000,
+  };
+}
+
+/**
+ * Ends an open check-in from any tab. Unanswered -> abandoned; already answered
+ * (offered / clarifying) -> completed, keeping the outcome that was reached.
+ */
+export function endCheckin(db: Db, id: string, now: number) {
+  expireStale(db, now);
+  const row = getRow(db, id);
+  if (!row) throw new HttpError(404, "checkin_not_found");
+  if (!["in_progress", "clarifying", "offered"].includes(row.status)) throw new HttpError(409, `invalid_state:${row.status}`);
+  const status = row.status === "in_progress" ? "abandoned" : "completed";
+  db.prepare(`UPDATE checkins SET status = ?, closed_at = ?, token_hash = NULL, outcome = COALESCE(outcome, 'none') WHERE id = ?`)
+    .run(status, now, id);
+  log("checkin.ended", { id, status });
+  return { status };
+}
+
 /** Converts a policy decision to the client payload and persists the transition. */
 function apply(db: Db, row: CheckinRow, d: Decision, source: string, now: number) {
   if (d.action === "help") {

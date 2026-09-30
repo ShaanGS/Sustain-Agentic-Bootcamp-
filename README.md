@@ -18,7 +18,7 @@ npm install
 cp .env.example .env        # pick a classifier (see below)
 npm start                   # builds the UI, serves UI + API + scheduler on http://localhost:8787
 npm run dev                 # development: API on :8787 + Vite UI on http://localhost:5173
-npm test                    # 58 tests: pipeline, scheduler, API state machine, privacy
+npm test                    # 60 tests: pipeline, scheduler, API state machine, privacy
 npm run eval                # fixture lines through the real pipeline
 npm run build && npm run e2e  # full judge demo in headless Chromium, screenshots in ./screenshots
 ```
@@ -145,6 +145,8 @@ in_progress | clarifying | offered --15 min--> abandoned       (terminal)
 | `POST` | `/api/checkins/:id/clarify` | Body `{token, choice: need_id \| "talk_to_person"}` |
 | `POST` | `/api/checkins/:id/close` | `offered \| clarifying → completed` |
 | `POST` | `/api/checkins/:id/skip` | `ready → skipped` |
+| `POST` | `/api/checkins/:id/resume` | From another tab: new session token for an **unanswered** check-in (the old tab's token stops working) |
+| `POST` | `/api/checkins/:id/end` | From any tab: `in_progress → abandoned`, `offered \| clarifying → completed` |
 | `GET` | `/api/protocol` | Everything the protocol screen shows, including recent runs as step codes only |
 
 ## Scope: what Still is not

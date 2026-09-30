@@ -91,6 +91,23 @@ export function App() {
     if (!s) return;
     try { await api.close(s.id, s.start.token); clearSession(); await refresh(); setFlow({ kind: "done", step: null }); } catch (e) { lost(e); }
   };
+  // Another tab holds the session token: take the check-in over here, or end it.
+  const takeOver = async (id: string) => {
+    setBusy(true); setNotice(null);
+    try {
+      const start = await api.resume(id);
+      saveSession({ id, start });
+      setFlow({ kind: "prompt", id, start, submitting: false, error: null });
+    } catch (e) { lost(e); } finally { setBusy(false); }
+  };
+  const end = async (id: string) => {
+    setBusy(true);
+    try {
+      const r = await api.end(id);
+      clearSession();
+      goToday(r.status === "completed" ? "Check-in closed." : "Check-in ended. Still will check in again at your next scheduled time.");
+    } catch (e) { lost(e); } finally { setBusy(false); }
+  };
   const routeTo = (id: string, token: string, r: RouteResult, via: "classifier" | "clarify") => {
     pendingText.current = "";
     if (r.route === "help") { clearSession(); setFlow({ kind: "help", result: r }); }
@@ -166,7 +183,7 @@ export function App() {
   } else if (flow.kind === "done") {
     main = <DonePanel state={state} step={flow.step} onHome={() => goToday()} />;
   } else {
-    main = <Today state={state} notice={notice} busy={busy} onCheckInNow={checkInNow} onBegin={begin} onSkip={skip} onResume={resume} onFinish={finish} />;
+    main = <Today state={state} notice={notice} busy={busy} onCheckInNow={checkInNow} onBegin={begin} onSkip={skip} onResume={resume} onFinish={finish} onTakeOver={takeOver} onEnd={end} />;
     right = <TodaySide state={state} />;
   }
 

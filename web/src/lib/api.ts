@@ -72,4 +72,6 @@ export const api = {
   clarify: (id: string, token: string, choice: string) => call<RouteResult>("POST", `/checkins/${id}/clarify`, { token, choice }),
   close: (id: string, token: string) => call<{ status: string }>("POST", `/checkins/${id}/close`, { token }),
   skip: (id: string) => call<{ status: string }>("POST", `/checkins/${id}/skip`),
+  resume: (id: string) => call<StartResult>("POST", `/checkins/${id}/resume`),
+  end: (id: string) => call<{ status: string }>("POST", `/checkins/${id}/end`),
 };

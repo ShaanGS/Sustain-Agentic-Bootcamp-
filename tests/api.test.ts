@@ -129,6 +129,34 @@ describe("check-in journey", () => {
   });
 });
 
+describe("another tab", () => {
+  it("can take over an unanswered check-in; the old token stops working", async () => {
+    const { app } = setup();
+    const { id, token } = await begin(app);
+    const r = await request(app).post(`/api/checkins/${id}/resume`).expect(200);
+    expect(r.body.token).not.toBe(token);
+    await request(app).post(`/api/checkins/${id}/respond`).send({ token, text: "I have three assignments" }).expect(401);
+    const ok = await request(app).post(`/api/checkins/${id}/respond`).send({ token: r.body.token, text: "I have three assignments due" }).expect(200);
+    expect(ok.body.route).toBe("skill");
+    // Once answered it can no longer be taken over.
+    await request(app).post(`/api/checkins/${id}/resume`).expect(409);
+  });
+
+  it("can end an open check-in: unanswered -> abandoned, answered -> completed", async () => {
+    const { app } = setup();
+    let t = await begin(app);
+    expect((await request(app).post(`/api/checkins/${t.id}/end`).expect(200)).body.status).toBe("abandoned");
+    await request(app).post(`/api/checkins/${t.id}/respond`).send({ token: t.token, text: "hi" }).expect(409);
+    t = await begin(app);
+    await request(app).post(`/api/checkins/${t.id}/respond`).send({ token: t.token, text: "I have three assignments due" }).expect(200);
+    expect((await request(app).post(`/api/checkins/${t.id}/end`).expect(200)).body.status).toBe("completed");
+    const st = await request(app).get("/api/state");
+    expect(st.body.open_checkin).toBeNull();
+    expect(st.body.last_checkin).toMatchObject({ status: "completed", outcome: "skill" });
+    await request(app).post(`/api/checkins/${t.id}/end`).expect(409);
+  });
+});
+
 describe("protocol disclosure", () => {
   it("always discloses the Groq path, whatever classifier is active", async () => {
     const { app } = setup();

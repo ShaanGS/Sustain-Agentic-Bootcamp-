@@ -10,9 +10,10 @@ import { TAB_HREF } from "../components/Shell";
 
 const rise = { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, ease: [0.2, 0, 0, 1] as const } };
 
-export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onResume, onFinish }: {
+export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onResume, onFinish, onTakeOver, onEnd }: {
   state: AppState; notice: string | null; busy: boolean;
   onCheckInNow: () => void; onBegin: (id: string) => void; onSkip: (id: string) => void; onResume: () => void; onFinish: () => void;
+  onTakeOver: (id: string) => void; onEnd: (id: string) => void;
 }) {
   const now = useNow(state.now);
   const s = state.schedule;
@@ -60,8 +61,23 @@ export function Today({ state, notice, busy, onCheckInNow, onBegin, onSkip, onRe
           open.status === "in_progress"
             ? <Button onClick={onResume}>Continue check&#8209;in</Button>
             : <Button onClick={onFinish}>Finish check&#8209;in</Button>
+        ) : open.status === "in_progress" ? (
+          <>
+            <p className="lead" style={{ textAlign: "center", maxWidth: 560 }}>
+              It was started in another tab or window. Continue it here, or end it. Otherwise it closes on its own at {clock(open.closes_at)}.
+            </p>
+            <div className="today-actions">
+              <Button onClick={() => onTakeOver(open.id)} disabled={busy}>Continue here</Button>
+              <button className="btn btn-soft" onClick={() => onEnd(open.id)} disabled={busy}>End it</button>
+            </div>
+          </>
         ) : (
-          <p className="lead" style={{ textAlign: "center" }}>It was started in another window and closes on its own at {clock(open.closes_at)}.</p>
+          <>
+            <p className="lead" style={{ textAlign: "center", maxWidth: 560 }}>
+              It was already answered in another tab or window. Close it here to finish.
+            </p>
+            <Button onClick={() => onEnd(open.id)} disabled={busy}>Close check&#8209;in</Button>
+          </>
         )}
       </section>
     );
@@ -138,7 +154,7 @@ export function TodaySide({ state }: { state: AppState }) {
     help_shown: "Ended with human support.",
     skipped: "Skipped.",
     expired: "Not started — it expired.",
-    abandoned: "Left unfinished — it closed on its own.",
+    abandoned: "Ended before an answer.",
   };
   return (
     <>

@@ -104,6 +104,26 @@ try {
   await page.getByRole("button", { name: "Back to Today" }).click();
   log("unclear → clarify → Ten-minute start");
 
+  // 5b. Started in one tab, continued in another (session tokens are per tab)
+  await page.getByRole("button", { name: "Check in now" }).click();
+  await begin();
+  await expectText("What's taking up the most space");
+  const tab2 = await ctx.newPage();
+  await tab2.goto(BASE);
+  await tab2.getByText("another tab or window").first().waitFor();
+  await tab2.waitForTimeout(400);
+  await tab2.screenshot({ path: join(SHOTS, "09b-other-tab.png") });
+  await tab2.getByRole("button", { name: "Continue here" }).click();
+  await tab2.locator("#response").fill(LINES.ordinary1);
+  await tab2.getByRole("button", { name: "Submit" }).click();
+  await tab2.getByText("One next step").first().waitFor();
+  await tab2.getByRole("button", { name: /^Done/ }).click();
+  await tab2.getByText("That's the").first().waitFor();
+  await tab2.close();
+  await page.goto(BASE);
+  await expectText("Until it's ready");
+  log("check-in taken over from a second tab");
+
   // 6. Help tab (always reachable)
   await nav("Help");
   await expectText("Opening this page doesn't change");

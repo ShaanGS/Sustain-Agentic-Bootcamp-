@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Db } from "./db.js";
 import { checkinConfig, crisisPhrases, helplines, needs, skills, skillsReview, skillById } from "./config.js";
 import { createDueCheckin, getOpenCheckin, getSchedule, saveSchedule, expireStale, OPEN_STATUSES } from "./scheduler.js";
-import { startCheckin, respond, clarify, closeCheckin, skipCheckin, HttpError } from "./checkins.js";
+import { startCheckin, respond, clarify, closeCheckin, skipCheckin, resumeCheckin, endCheckin, HttpError } from "./checkins.js";
 import type { Classifier } from "./pipeline/classify/types.js";
 import { recentRuns } from "./demoLog.js";
 import { isValidTimeZone } from "./time.js";
@@ -33,7 +33,7 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
     const schedule = getSchedule(db);
     const open = getOpenCheckin(db);
     const last = db.prepare(`SELECT status, outcome, skill_id, closed_at FROM checkins
-      WHERE status NOT IN ('ready','in_progress','clarifying','offered') ORDER BY COALESCE(closed_at, created_at) DESC LIMIT 1`)
+      WHERE status NOT IN ('ready','in_progress','clarifying','offered') ORDER BY COALESCE(closed_at, created_at) DESC, rowid DESC LIMIT 1`)
       .get() as { status: string; outcome: string | null; skill_id: string | null; closed_at: number | null } | undefined;
     res.json({
       now,
@@ -82,6 +82,8 @@ export function createApp({ db, classifier, clock = Date.now, tickMs = 15000 }: 
   });
   app.post("/api/checkins/:id/close", (req, res) => { res.json(closeCheckin(db, String(req.params.id), req.body?.token, clock())); });
   app.post("/api/checkins/:id/skip", (req, res) => { res.json(skipCheckin(db, String(req.params.id), clock())); });
+  app.post("/api/checkins/:id/resume", (req, res) => { res.json(resumeCheckin(db, String(req.params.id), clock())); });
+  app.post("/api/checkins/:id/end", (req, res) => { res.json(endCheckin(db, String(req.params.id), clock())); });
 
   app.get("/api/protocol", (_req, res) => {
     res.json({
