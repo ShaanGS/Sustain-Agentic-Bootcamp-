@@ -65,6 +65,11 @@ async function art() {
   await sharp(path.join(ROOT, "screenshots/06-focus-running.png"))
     .extract({ left: 670, top: 263, width: 2078, height: 1482 })
     .png().toFile(`${A}/app-result.png`);
+  // Slide 6: the architecture diagram, cropped to the flow (no title / tagline — those stay native text).
+  const archSvg = fs.readFileSync(path.join(__dirname, "still-architecture.svg"), "utf8").replace(/<circle cx="1800"[^>]*\/>/, "");
+  await sharp(Buffer.from(archSvg), { density: 144 }).resize(3840, 2160)
+    .extract({ left: 60, top: 540, width: 3780, height: 1360 })
+    .png().toFile(`${A}/arch-diagram.png`);
 }
 
 // ---- helpers ----
@@ -247,41 +252,21 @@ async function build() {
   {
     const s = pres.addSlide();
     s.background = { color: C.white };
-    s.addImage({ path: `${A}/orb.png`, x: 10.2, y: -2.0, w: 4.6, h: 4.6, transparency: 25 });
     eyebrow(s, "ARCHITECTURE", 0.6, 0.55);
     T(s, "The agent, without the black box", { x: 0.6, y: 0.9, w: 11, h: 0.8, fontFace: H, fontSize: 32, bold: true });
 
-    const nodes = ["STUDENT\nRESPONSE", "SAFETY\nBACKSTOP", "LLM\nUNDERSTANDING", "POLICY\nENGINE", "ALLOWLISTED\nEXECUTOR", "ACTION /\nHUMAN HELP", "END"];
-    const D = 1.36, gap = 0.44, x0 = 0.6, y0 = 1.95;
-    nodes.forEach((n, i) => {
-      const x = x0 + i * (D + gap);
-      const strong = i >= 1 && i <= 4;
-      s.addShape(pres.shapes.OVAL, { x, y: y0, w: D, h: D, fill: { color: strong ? C.violet : C.lav }, line: { color: strong ? C.violet : C.lav } });
-      T(s, n, { x: x + 0.05, y: y0, w: D - 0.1, h: D, fontSize: 9.5, bold: true, color: strong ? C.white : C.deep, align: "center", valign: "middle" });
-      if (i < nodes.length - 1) s.addShape(pres.shapes.LINE, { x: x + D + 0.06, y: y0 + D / 2, w: gap - 0.12, h: 0, line: { color: C.lilac, width: 1.5, endArrowType: "triangle" } });
-    });
-
-    const notes = [
-      ["SAFETY", ["78 reviewed crisis phrases", "Model risk:", "SAFE / HIGH_RISK / UNCERTAIN"]],
-      ["UNDERSTANDING", ["Situation + need", "+ limited context"]],
-      ["POLICY", ["Server-side authority. The model can't", "choose tools, generate helplines", "or write counselling."]],
-      ["EXECUTORS", ["Focus Timer · Breathing Guide", "Copy Message · Guided Reset", "Acknowledge"]],
-    ];
-    notes.forEach(([h, lines], i) => {
-      const x = 0.6 + i * 3.1;
-      T(s, h, { x, y: 3.75, w: 2.9, h: 0.3, fontSize: 11, bold: true, color: C.violet, charSpacing: 3 });
-      T(s, lines.map((t, j) => ({ text: t, options: { breakLine: j < lines.length - 1 } })),
-        { x, y: 4.1, w: 2.9, h: 1.0, fontSize: 12, color: C.ink, lineSpacingMultiple: 1.1 });
-    });
+    // The architecture diagram (deck/still-architecture.png, cropped to the diagram itself).
+    s.addImage({ path: `${A}/arch-diagram.png`, x: 0.6, y: 1.7, w: 12.2, h: 4.39,
+      altText: "Still architecture: trigger, student response, safety backstop, LLM understanding, policy engine, allowlisted executor, end; crisis phrase and HIGH_RISK go to human help; UNCERTAIN goes to one clarification that re-checks the original" });
 
     T(s, [
       { text: "THE MODEL ", options: { color: C.ink } }, { text: "INTERPRETS. ", options: { color: C.violet } },
       { text: "THE POLICY ", options: { color: C.ink } }, { text: "DECIDES. ", options: { color: C.violet } },
       { text: "THE EXECUTOR ", options: { color: C.ink } }, { text: "ACTS.", options: { color: C.violet } },
-    ], { x: 0.6, y: 5.5, w: 12.2, h: 0.55, fontFace: H, fontSize: 23, bold: true });
+    ], { x: 0.6, y: 6.2, w: 12.2, h: 0.5, fontFace: H, fontSize: 23, bold: true });
 
     T(s, "React 19 · TypeScript · Vite · Node.js 22 · Express · SQLite · Zod · Groq / Ollama · Vitest · Supertest · Playwright",
-      { x: 0.6, y: 6.6, w: 12.1, h: 0.35, fontSize: 12, color: C.muted });
+      { x: 0.6, y: 6.85, w: 12.1, h: 0.3, fontSize: 12, color: C.muted });
     s.addNotes("One pass per check-in, no loop back to the model. Everything the student can be shown — skills, steps, helplines — comes from reviewed configuration, never from the model.");
   }
 
